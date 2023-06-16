@@ -3,6 +3,9 @@ uuid = "6b1bba67-9fa6-466a-8c93-71aaf28c16e6"
 authors = ["Steffen Maass"]
 version = "1.0.0-DEV"
 
+[deps]
+PyCall = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0"
+
 [compat]
 julia = "1"
 
