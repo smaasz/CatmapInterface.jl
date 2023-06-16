@@ -83,12 +83,13 @@ function __init__()
         ideal_mean_field_steady_state_template = Template(templates["ideal_mean_field_steady_state"])
         a = ideal_mean_field_steady_state_template.substitute({"steady_state_expressions": steady_state_expressions})
         
-        return rxn_params_grid, a
+        return rate_constants_grid, a
     """
 end
 
 
 include("kineticmodel.jl")
 export get_kinetic_model
+export convert_to_julia
 
 end

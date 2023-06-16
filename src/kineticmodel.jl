@@ -20,3 +20,14 @@ function get_kinetic_model(setup_file_path, energies_file_path)
     return a
 
 end
+
+function convert_to_julia(kin_model)
+    
+    kin_model = replace(kin_model, r"def (.+):" => s"function \1") * "end"
+    kin_model = replace(kin_model, r"(\w+?)\[(\d*?)\]" => s"\1[\2 + 1]")
+    kin_model = replace(kin_model, r"mpf\('(.*)'\)" => s"\1")
+    kin_model = replace(kin_model, r"(\h)\[(.*?)\]\h*\*\h*(.*?)([\h|\n])" => s"\1\2 * ones(\3)\4")
+    kin_model = replace(kin_model, r"([^a-zA-Z])len\((.*?)\)" => s"\1length(\2)")
+
+    return kin_model
+end
