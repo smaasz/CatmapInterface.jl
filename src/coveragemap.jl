@@ -1,12 +1,19 @@
-function compute_coverage_map(descriptor_grid, rxn_parameter_grid, kinetic_model!; p = [1.0, 1.0, 1.0])
+function compute_coverage_map(descriptor_grid, rxn_parameter_grid, kinetic_model!; p = [1.0, 1.0, 1.0], use_odesolver = false)
 
     entries = []
 
     θ_init  = [0.5, 0.5]
-    for (descriptor_values, rxn_parameters) in zip(descriptor_grid, rxn_parameter_grid)
+    for (descriptor_values, rxn_parameters) in ProgressBar(zip(eachrow(descriptor_grid), eachrow(rxn_parameter_grid)))
     
         prob    = SteadyStateProblem(kinetic_model!, θ_init, p = (rxn_parameters[1], rxn_parameters[2], p))
-        sol     = solve(prob, DynamicSS(Rodas5()))
+        
+        if use_odesolver
+            sol     = solve(prob, DynamicSS(Rodas5()))
+        else #use NonlinearSolve.jl
+            prob    = NonlinearProblem(prob)
+            sol     = solve(prob, NewtonRaphson())
+            #sol     = solve(prob, SSRootfind())
+        end
 
         # add to coverage map
         push!(entries, (descriptor_values, sol))

@@ -19,15 +19,19 @@ end
 
 kinetic_model! = convert_to_julia(kinetic_model)
 
-# read in coverage map calculated with CATmap
 catmap_coverage_map = get_catmap_coverage_map("./coverage_map_catmap.csv")
+coverage_map        = compute_coverage_map(descriptor_grid, rxn_parameter_grid, kinetic_model!)
 
-θ       = [0.2, 0.8]
-prob    = SteadyStateProblem(kinetic_model!, θ, p = (rxn_parameter_grid[77,1], rxn_parameter_grid[77,2], [1.0, 1.0, 1.0])) 
-sol     = solve(prob, DynamicSS(Rodas5()))
+@testset "CatmapInterface.jl" for descriptor_values in eachrow(descriptor_grid)
+    @test catmap_coverage_map[descriptor_values] == coverage_map[descriptor_values]
+end
 
-println(descriptor_grid[77, :])
-println(sol)
+# θ       = [0.2, 0.8]
+# prob    = SteadyStateProblem(kinetic_model!, θ, p = (rxn_parameter_grid[77,1], rxn_parameter_grid[77,2], [1.0, 1.0, 1.0])) 
+# sol     = solve(prob, DynamicSS(Rodas5()))
+
+# println(descriptor_grid[77, :])
+# println(sol)
 
 #@testset "CatmapInterface.jl" begin
     # Write your tests here.
