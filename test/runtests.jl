@@ -20,7 +20,7 @@ end
 kinetic_model! = convert_to_julia(kinetic_model)
 
 catmap_coverage_map = get_catmap_coverage_map("./coverage_map_catmap.csv")
-coverage_map        = compute_coverage_map(descriptor_grid, rxn_parameter_grid, kinetic_model!)
+coverage_map        = compute_coverage_map(descriptor_grid, rxn_parameter_grid, kinetic_model!, [0.5, 0.5], [1.0, 1.0, 1.0])
 
 @testset "CatmapInterface.jl" for descriptor_values in eachrow(descriptor_grid)
     @test catmap_coverage_map[descriptor_values] == coverage_map[descriptor_values]

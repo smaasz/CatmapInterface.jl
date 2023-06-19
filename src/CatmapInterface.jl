@@ -28,6 +28,10 @@ function __init__()
             model.resolution = [model.resolution] * len(model.descriptor_names)
         
         def linspace(start, stop, nitems):
+            
+            if start >= stop:
+                return [start]
+        
             delta = (stop - start)/(nitems-1)
             r = []
             for i in range(nitems):
@@ -58,7 +62,7 @@ function __init__()
 
         # the rate constants should not depend on the coverage 
         # as long as the no adsorbate interactions are assumed (model.adsorbate_interaction_model == "ideal")
-        coverages = [0.0, 0.0]
+        coverages = [0.0] * len(model.adsorbate_names)
 
         rate_constants_grid = [0] * ndescriptor_tuples
         for i in range(ndescriptor_tuples):
