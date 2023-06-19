@@ -3,6 +3,8 @@ module CatmapInterface
 ENV["PYCALL_JL_RUNTIME_PYTHON"] = Sys.which("python3")
 using PyCall
 
+using DifferentialEquations
+
 function __init__()
     py"""
     from catmap import ReactionModel
@@ -83,7 +85,7 @@ function __init__()
         ideal_mean_field_steady_state_template = Template(templates["ideal_mean_field_steady_state"])
         a = ideal_mean_field_steady_state_template.substitute({"steady_state_expressions": steady_state_expressions})
         
-        return rate_constants_grid, a
+        return descriptor_grid, rate_constants_grid, a
     """
 end
 
@@ -91,5 +93,8 @@ end
 include("kineticmodel.jl")
 export get_kinetic_model
 export convert_to_julia
+
+include("coveragemap.jl")
+export compute_coverage_map
 
 end

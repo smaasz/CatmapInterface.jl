@@ -11,13 +11,14 @@ function get_kinetic_model(setup_file_path, energies_file_path)
     tmp_setup_file_path     = cp(setup_file_path, joinpath(tmpdir, setup_file_name))
     tmp_energies_file_path  = cp(energies_file_path, joinpath(tmpdir, energies_file_name))
 
-    grid, kin_model = py"catmap_kinetic_model"(tmp_setup_file_path)
+    descriptor_grid, rxn_parameter_grid, kin_model = py"catmap_kinetic_model"(tmp_setup_file_path)
 
-    grid = ((x) -> convert_pythonfloat.(x)).(grid)
+    rxn_parameter_grid  = ((x) -> convert_pythonfloat.(x)).(rxn_parameter_grid)
+    descriptor_grid     = ((x) -> convert_pythonfloat.(x)).(descriptor_grid)
 
     cd(workingdir)
 
-    return grid, kin_model
+    return descriptor_grid, rxn_parameter_grid, kin_model
 
 end
 
@@ -33,7 +34,7 @@ function convert_to_julia(kin_model)
     kin_model = join(split(kin_model, "\n")[1:end-5], "\n") * "end"
     
     #kin_model = replace(kin_model, r"def (?<functionname>.+?)\((?<arguments>.*)\):" => s"function \g<functionname>!(dtheta_dt, \g<arguments>)")
-    kin_model = replace(kin_model, r".*def.*" => s"function kinetic_model!(dtheta_dt::AbstractVector{T}, theta::AbstractVector{T}, ps, t) where T\n\n    kf, kr, p = ps\n")
+    kin_model = replace(kin_model, r".*def.*" => s"function kinetic_model!(dtheta_dt, theta::AbstractVector{T}, ps, t) where T\n\n    kf, kr, p = ps\n")
     
     kin_model = replace(kin_model, r"dtheta_dt = .*" => s"")
     
