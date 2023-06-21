@@ -100,7 +100,7 @@ include("kineticmodel.jl")
 export get_kinetic_model
 export convert_to_julia
 
-include("coveragemap.jl")
+include("solver.jl")
 export compute_coverage_map
 
 end

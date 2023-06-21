@@ -1,3 +1,18 @@
+function compute_coverage(rxn_parameters, kinetic_model!, θ_init, p; use_odesolver = false)
+
+    prob = SteadyStateProblem(kinetic_model!, θ_init, p = (rxn_parameters[1], rxn_parameters[2], p))
+    
+    if use_odesolver
+        sol     = solve(prob, DynamicSS(Rodas5()))
+    else #use NonlinearSolve.jl
+        #prob    = NonlinearProblem(prob)
+        #sol     = solve(prob, NewtonRaphson())
+        sol     = solve(prob, SSRootfind())
+    end
+
+    return sol
+end
+
 function compute_coverage_map(descriptor_grid, rxn_parameter_grid, kinetic_model!, θ_init, p; use_odesolver = false)
 
     entries = []
