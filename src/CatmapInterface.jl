@@ -85,22 +85,17 @@ function __init__()
         # steady_state_expressions = indent_string('\n    '.join(ss_eqs), 0)
         steady_state_expressions = '\n    '.join(ss_eqs)
 
-        from catmap.data.templates import templates
-        from string import Template
-
-        ideal_mean_field_steady_state_template = Template(templates["ideal_mean_field_steady_state"])
-        a = ideal_mean_field_steady_state_template.substitute({"steady_state_expressions": steady_state_expressions})
-        
-        return descriptor_grid, rate_constants_grid, a
+        return descriptor_grid, rate_constants_grid, steady_state_expressions, model.elementary_rxns, model.gas_names
     """
 end
 
 
 include("kineticmodel.jl")
-export get_kinetic_model
+export get_catmap_output
 export convert_to_julia
 
 include("solver.jl")
 export compute_coverage_map
+export compute_coverage
 
 end
