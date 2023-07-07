@@ -6,12 +6,13 @@ using PyCall
 using DifferentialEquations
 using ProgressBars
 using NonlinearSolve
+using Interpolations
 
 function __init__()
     py"""
     from catmap import ReactionModel
 
-    def catmap_kinetic_model(setup_file):
+    def catmap_kinetic_model(setup_file, vary_sigma=False, Stern_capacitance=20.0):
 
         model = ReactionModel(setup_file=setup_file)
 
@@ -55,9 +56,21 @@ function __init__()
         descriptor_grid = [0] * ndescriptor_tuples
         rxn_params_grid = [0] * ndescriptor_tuples
         for i in range(ndescriptor_tuples):
+            
             descriptor_values = [descriptor_range[idx] for idx, descriptor_range in zip(get_idx_tuple(i, model.resolution), descriptor_ranges)]
             descriptor_grid[i] = descriptor_values
-            rxn_params_grid[i] = model.scaler.get_rxn_parameters(descriptor_values)
+            # create dictionary with different values of sigma
+            if vary_sigma and ('voltage' in model.descriptor_names):
+                rxn_params_grid[i] = {}
+                voltage_reduced  = descriptor_values[model.descriptor_names.index('voltage')] - model.extrapolated_potential
+                voltage_diff_drops = linspace(0.0, voltage_reduced, 20) if (voltage_reduced > 0) else linspace(voltage_reduced, 0.0, 20)
+                sigmas = [(voltage_reduced - voltage_diff_drop) * Stern_capacitance for voltage_diff_drop in voltage_diff_drops]
+                for sigma in sigmas:
+                    model.sigma_input = sigma
+                    rxn_params_grid[i][sigma] = model.scaler.get_rxn_parameters(descriptor_values)
+            else:
+                rxn_params_grid[i] = model.scaler.get_rxn_parameters(descriptor_values)
+
 
 
         # the rate constants should not depend on the coverage 
@@ -67,13 +80,24 @@ function __init__()
         rate_constants_grid = [0] * ndescriptor_tuples
         for i in range(ndescriptor_tuples):
             params = rxn_params_grid[i]
-            kfs, krs, dkfs, dkrs = model.solver.rate_constants(
-                params, coverages, model.solver._gas_energies, model.solver._site_energies, 
-                model.solver.temperature, model.solver.interaction_function, 
-                model.solver._mpfloat, model.solver._matrix, 
-                model.solver._math.exp, model.solver._math.sqrt
-            )
-            rate_constants_grid[i] = [kfs, krs, dkfs, dkrs]
+            if isinstance(params, dict):
+                rate_constants_grid[i] = {}
+                for sigma, _params in params.items():
+                    kfs, krs, dkfs, dkrs = model.solver.rate_constants(
+                        _params, coverages, model.solver._gas_energies, model.solver._site_energies, 
+                        model.solver.temperature, model.solver.interaction_function, 
+                        model.solver._mpfloat, model.solver._matrix, 
+                        model.solver._math.exp, model.solver._math.sqrt
+                    )
+                    rate_constants_grid[i][sigma] = [kfs, krs, dkfs, dkrs]
+            else:
+                kfs, krs, dkfs, dkrs = model.solver.rate_constants(
+                    params, coverages, model.solver._gas_energies, model.solver._site_energies, 
+                    model.solver.temperature, model.solver.interaction_function, 
+                    model.solver._mpfloat, model.solver._matrix, 
+                    model.solver._math.exp, model.solver._math.sqrt
+                )
+                rate_constants_grid[i] = [kfs, krs, dkfs, dkrs]
 
         ss_eqs = model.solver.rate_equations()
 
