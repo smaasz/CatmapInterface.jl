@@ -74,9 +74,7 @@ function get_catmap_output(setup_file_path, energies_file_path, dependence_on_σ
             sigmas = first.(sorted)
             sigmas = inverse_collect(sigmas)
             rate_constants = [[[convert_pythonfloat(value) for value in row] for row in entry] for entry in last.(sorted)]
-            println("$(size(rate_constants[1]))\n\n\n")
             kfs = hcat([rate_constant[1] for rate_constant in rate_constants]...)
-            print(size(kfs))
             krs = hcat([rate_constant[2] for rate_constant in rate_constants]...)
 
             kfs = cubic_spline_interpolation(sigmas, kfs[1, :])
@@ -92,8 +90,8 @@ function get_catmap_output(setup_file_path, energies_file_path, dependence_on_σ
 
         function compute_rates(rxn_parameters, θ, p, σ)
         
-            kf = rxn_parameters[1](σ)
-            kr = rxn_parameters[2](σ)
+            kf = [kf(σ) for kf in rxn_parameters[1]]
+            kr = [kr(σ) for kr in rxn_parameters[2]]
         
             rs =  elementary_rates(kf, kr, θ, p)
 
