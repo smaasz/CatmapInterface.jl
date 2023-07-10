@@ -77,8 +77,8 @@ function get_catmap_output(setup_file_path, energies_file_path, dependence_on_σ
             kfs = hcat([rate_constant[1] for rate_constant in rate_constants]...)
             krs = hcat([rate_constant[2] for rate_constant in rate_constants]...)
 
-            kfs = cubic_spline_interpolation(sigmas, kfs[1, :])
-            krs = cubic_spline_interpolation(sigmas, krs[1, :])
+            kfs = [cubic_spline_interpolation(sigmas, kf_evaluated) for kf_evaluated in eachcol(kfs)]
+            krs = [cubic_spline_interpolation(sigmas, kr_evaluated) for kr_evaluated in eachcol(krs)]
             push!(rate_constants_grid, [kfs, krs])
         end
 
