@@ -1,79 +1,3 @@
-abstract type AbstractSpecies end
-
-struct AdsorbateSpecies <: AbstractSpecies
-    energy::Float64
-    frequencies::Vector{Float64}
-    pressure::Float64
-    sigma_params::@NamedTuple{a::Float64, b::Float64}
-    function Species(; pressure, sigma_params)
-        if pressure < 0.0
-            throw(DomainError("pressure must be nonnegative"))
-        end
-        if any(frequencies .<= 0.0)
-            throw(DomainError("all frequencies must be positive"))
-        end
-        new(energy, frequencies, pressure, sigma_params)
-    end
-end
-
-struct GasSpecies <: AbstractSpecies
-    energy::Float64
-    frequencies::Vector{Float64}
-    pressure::Float64
-
-end
-
-
-"""
-Main data structure for interfacing CatMAP
-"""
-struct CatmapParams
-    rn::ReactionSystem
-    prefactors::Vector{Float64}
-    species_definitions::Dict{String, AbstractSpecies}
-    gas_thermo_mode::Symbol
-    adsorbate_thermo_mode::Symbol
-    electrochemical_thermo_mode::Symbol
-    function CatmapParams(; rn, prefactors, species, gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode)       
-        if !(length(prefactors == numreactions(rn)))
-            throw(ArgumentError("The number of prefactors must match the number of reactions"))
-        end
-        if any(prefactors .<= 0.0)
-            throw(DomainError("all prefectors must be positive"))
-        end
-        # check that for each species in the reaction network parameters are provided
-        function isspecified(sp)
-            any(map(isequal(sp), keys(species)))
-        end
-        for sp in species(rn)
-            if !isspecified(sp) 
-                throw(ArgumentError("$sp not specified in the argument species_definitions"))
-            end
-        end
-        # check that the provided modes are defined
-        for mode in [gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode]
-            if !isdefined(@__MODULE__, mode)
-                throw(ArgumentError("$(String(:mode))=$mode is not implemented"))
-            end
-        end
-        new(rn, prefactors, species_definitions, gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode)
-    end
-end
-
-function isspecified(sp::SymbolicUtils.BasicSymbolic{Real}, params::CatmapParams, )
-    sp_name = string(operation(sp))
-    any(map(isequal(spname), keys(params.species_definitions)))
-end
-
-function compile_rn(rn::ReactionSystem, params::CatmapParams)
-    @assert all(map(isspecified(params), species(rn))) "all species used in the reaction network must be specified"
-    
-
-end
-
-
-
-
 @kwdef struct TState
     symbol::String
     beta::Float64
@@ -85,6 +9,126 @@ end
     tstate::Union{Nothing, TState}
 end
 
+abstract type AbstractSpecies end
+
+struct FictiousSpecies <:AbstractSpecies
+    formation_energy::Float64
+    pressure::Float64
+    function FictiousSpecies(; formation_energy, pressure)
+        if pressure < 0.0
+            throw(DomainError("pressure must be nonnegative"))
+        end
+        new(formation_energy, pressure)
+    end
+end
+
+struct GasSpecies <: AbstractSpecies
+    formation_energy::Float64
+    pressure::Float64
+    frequencies::Vector{Float64}
+    function GasSpecies(; formation_energy, pressure, frequencies)
+        if pressure < 0.0
+            throw(DomainError("pressure must be nonnegative"))
+        end
+        if any(frequencies .<= 0.0)
+            throw(DomainError("all frequencies must be positive"))
+        end
+        new(formation_energy, pressure, frequencies)
+    end
+end
+
+struct AdsorbateSpecies <: AbstractSpecies
+    formation_energy::Float64
+    coverage::Float64
+    site::String
+    surface_name::String
+    frequencies::Vector{Float64}
+    sigma_params::@NamedTuple{a::Float64, b::Float64}
+    function AdsorbateSpecies(; formation_energy, coverage, site, surface_name, frequencies, sigma_params::@NamedTuple{a::Float64, b::Float64})
+        if coverage < 0.0 || coverage > 1.0
+            throw(DomainError("coverage must be between 0 and 1"))
+        end
+        if any(frequencies .<= 0.0)
+            throw(DomainError("all frequencies must be positive"))
+        end
+        new(formation_energy, coverage, site, surface_name, frequencies, sigma_params)
+    end
+end
+#AdsorbateSpecies(; formation_energy, coverage, site, surface_name, frequencies, sigma_params::Vector{Float64}) = AdsorbateSpecies(; formation_energy, coverage, site, surface_name, frequencies, sigma_params=(; a=sigma_params[1], b=sigma_params[2]))
+
+struct TStateSpecies <: AbstractSpecies
+    formation_energy::Float64
+    coverage::Float64
+    site::String
+    surface_name::String
+    frequencies::Vector{Float64}
+    sigma_params::@NamedTuple{a::Float64, b::Float64}
+    function TStateSpecies(; formation_energy, coverage, site, surface_name, frequencies, sigma_params::@NamedTuple{a::Float64, b::Float64})
+        if coverage < 0.0 || coverage > 1.0
+            throw(DomainError("coverage must be between 0 and 1"))
+        end
+        if any(frequencies .<= 0.0)
+            throw(DomainError("all frequencies must be positive"))
+        end
+        new(formation_energy, coverage, site, surface_name, frequencies, sigma_params)
+    end
+end
+#TStateSpecies(; formation_energy, coverage, site, surface_name, frequencies, sigma_params::Vector{Float64}) = TStateSpecies(; formation_energy, coverage, site, surface_name, frequencies, sigma_params=(; a=sigma_params[1], b=sigma_params[2]))
+
+struct SiteSpecies <: AbstractSpecies
+    energy::Float64
+    site_name::String
+end
+
+"""
+Main data structure for interfacing CatMAP
+"""
+struct CatmapParams
+    reactions::Vector{ParsedReaction}
+    prefactors::Vector{Float64}
+    species_list::Dict{String, AbstractSpecies}
+    gas_thermo_mode::Symbol
+    adsorbate_thermo_mode::Symbol
+    electrochemical_thermo_mode::Symbol
+    bulk_pH::Float64
+    Upzc::Float64
+    potential_reference_scale::String
+    function CatmapParams(; reactions, prefactors, species_list, gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode, bulk_pH, Upzc, potential_reference_scale)       
+        if !(length(prefactors) == length(reactions))
+            throw(ArgumentError("The number of prefactors must match the number of reactions"))
+        end
+        if any(prefactors .<= 0.0)
+            throw(DomainError("all prefectors must be positive"))
+        end
+        # check that for each species included in the reactions it is contained in the species list
+        species_set = Set{String}()
+        for (; educts, products) in reactions
+            union!(species_set, first.(educts))
+            union!(species_set, first.(products))
+        end
+        for sp in species_set
+            if !(haskey(species_list, sp))
+                throw(ArgumentError("$sp not specified in the species_list"))
+            end
+        end
+        # check that the provided modes are defined
+        # for mode in [gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode]
+        #     if !isdefined(@__MODULE__, mode)
+        #         throw(ArgumentError("$(String(:mode))=$mode is not implemented"))
+        #     end
+        # end
+        # check that reference scale is either RHE or SHE
+        if !(potential_reference_scale == "RHE" || potential_reference_scale == "SHE")
+            throw(ArgumentError("$potential_reference_scale must be either SHE or RHE"))
+        end
+        new(reactions, prefactors, species_list, gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode, bulk_pH, Upzc, potential_reference_scale)
+    end
+end
+
+function remove_whitespaces(s)
+    s_vec = collect(s)
+    join(s_vec[map(!isspace, s_vec)])
+end
 
 function parse_reactant_sum(rs)
     reactant_sum = r"^(?:[^+]+)(?:\+[^+]+)*$"
@@ -153,30 +197,32 @@ end
 function parse_energy_table(input_file_path)
     (dc, dh) = readdlm(input_file_path, '\t', String; header=true)
     entry_types = [
-        "surface_name"      => String, 
-        "site_name"         => String,
-        "species_name"      => String,
-        "formation_energy"  => Float64,
-        "bulk_structure"    => String,
-        "frequencies"       => Vector{Float64},
-        "other_parameters"  => Vector{String},
-        "reference"         => String,
+        :surface_name      => String, 
+        :site_name         => String,
+        :species_name      => String,
+        :formation_energy  => Float64,
+        :bulk_structure    => String,
+        :frequencies       => Vector{Float64},
+        :other_parameters  => Vector{String},
+        :reference         => String,
     ]
-    if !(dh[1,:] == first.(entry_types))
+    if !(dh[1,:] == string.(first.(entry_types)))
         throw(ArgumentError("headers are not valid"))
     end
 
-    table = []
+
+    TRow = NamedTuple{(first.(entry_types)...,), Tuple{last.(entry_types)...}}
+    table = TRow[]
     for (nrow, row_strings) in enumerate(eachrow(dc))
         row = []
         for ((entry_header, entry_type), entry) in zip(entry_types, row_strings)
             try
                 if entry_type == String
-                    push!(row, entry)
+                    push!(row, entry_header => entry)
                 elseif entry_type <: Number
-                    push!(row, parse(entry_type, entry))
+                    push!(row, entry_header => parse(entry_type, entry))
                 elseif entry_type <: Vector
-                    push!(row, parse_vector(entry, eltype(entry_type)))
+                    push!(row, entry_header => parse_vector(entry, eltype(entry_type)))
                 end
             catch e
                 if isa(e, ArgumentError)
@@ -186,7 +232,7 @@ function parse_energy_table(input_file_path)
                 end
             end
         end
-        push!(table, row)  
+        push!(table, (; row...))  
     end
     table
 end
@@ -199,12 +245,22 @@ function parse_catmap_input(input_file_path)
         push!(reactions, parse_reaction(r))
     end
 
+    prefactors = py"prefactor_list"
+
     species_definitions = py"species_definitions"
 
-    energies_file_path  = py"input_file"
+    energies_file_path  = joinpath(dirname(input_file_path), py"input_file")
     energy_table        = parse_energy_table(energies_file_path)
+
+    surface_name = let 
+        surface_names = py"surface_names"
+        if length(surface_names) > 1
+            throw(ArgumentError("implementation only works for one surface for now"))
+        end
+        surface_names[1]
+    end
     
-    species = specieslist(reactions, species_definitions, energy_table)
+    species_list = specieslist(reactions, species_definitions, energy_table, surface_name)
 
 
     bulk_pH = py"bulk_ph"
@@ -213,12 +269,11 @@ function parse_catmap_input(input_file_path)
     potential_reference_scale   = py"potential_reference_scale"
 
     
-    gas_thermo_mode             = py"gas_thermo_mode"
-    adsorbate_thermo_mode       = py"adsorbate_thermo_mode"
-    electrochemical_thermo_mode = py"electrochemical_thermo_mode"
+    gas_thermo_mode             = Symbol(py"gas_thermo_mode")
+    adsorbate_thermo_mode       = Symbol(py"adsorbate_thermo_mode")
+    electrochemical_thermo_mode = Symbol(py"electrochemical_thermo_mode")
 
-
-
+    CatmapParams(; reactions, prefactors, species_list, gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode, bulk_pH, Upzc, potential_reference_scale)
 end
 
 
@@ -229,31 +284,84 @@ end
 #   3b. if type == adsorbate, then determine the site, for each surface complete species_def by using energy table
 #   3c. if type == tstate, then do same as for adsorbate
 #   3d. if type == fictious, then ...
-function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_table)
-    rfictious = r"ele_g|OH_g"
-    rgas = r"(?<species>[A-Za-z0-9]*)_g"
-    radsorbate = r"(?<species>[A-Za-z0-9]*)\*_[^g]"
-    rtstate = r"(?<species>[A-Za-z0-9\-]*)\*_[^g]"
-
+function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_table, surface_name)
     # collect all species in a set
     species = Set{String}()
     for (; educts, products) in reactions
         union!(species, first.(educts))
         union!(species, first.(products))
     end
-    
     specieslist = Dict{String, AbstractSpecies}()
     for s in species
-        if isfictious(s)
-            specieslist[s] = FictiousSpecies()
-        elseif isgas(s)
-            specieslist[s] = GasSpecies()
-        elseif isadsorbate(s)
-            specieslist[s] = AdsorbateSpecies()
-        elseif iststate(s)
-            specieslist[s] = TstateSpecies()
+        match_fictious  = match(r"^(?<species_name>ele|OH)_g$", s)
+        match_gas       = match(r"^(?<species_name>[A-Za-z0-9]+)_g$", s)
+        match_adsorbate = match(r"^(?<species_name>[A-Za-z0-9]+)\*_(?<site>[^g])$", s)
+        match_tstate    = match(r"^(?<species_name>[A-Za-z0-9\-]+)\*_(?<site>[^g])$", s)
+        match_site      = match(r"^\*_(?<site>[^g])$", s)
+        if !isnothing(match_fictious)
+            species_name            = match_fictious[:species_name]
+            (; pressure)            = findspecies(species_name, "g", species_defs)
+            (; formation_energy)    = findspecies(species_name, energy_table)
+            pressure                = species_defs[s]["pressure"] 
+            specieslist[s]          = FictiousSpecies(;formation_energy, pressure)
+        elseif !isnothing(match_gas)
+            species_name                        = match_gas[:species_name]
+            (; pressure)                        = findspecies(species_name, "g", species_defs)
+            (; formation_energy, frequencies)   = findspecies(species_name, energy_table)
+            specieslist[s]                      = GasSpecies(;formation_energy, pressure, frequencies)
+        elseif !isnothing(match_adsorbate)
+            species_name                        = match_adsorbate[:species_name]
+            site                                = match_adsorbate[:site]
+            (; sigma_params)                    = findspecies(species_name, site, species_defs)
+            sigma_params                        = (; a = sigma_params[1], b = sigma_params[2])
+            coverage                            = 0.0
+            (; site_names)                      = findspecies("", site, species_defs)
+            site_name                           = site_names[1]
+            (; formation_energy, frequencies)   = findspecies(species_name, energy_table; surface_name, site_name)
+            specieslist[s]                      = AdsorbateSpecies(;formation_energy, coverage, site, surface_name, frequencies, sigma_params)
+        elseif !isnothing(match_tstate)
+            species_name                        = match_tstate[:species_name]
+            site                                = match_tstate[:site]
+            (; sigma_params)                    = findspecies(species_name, site, species_defs)
+            sigma_params                        = (; a = sigma_params[1], b = sigma_params[2])
+            coverage                            = 0.0
+            (; site_names)                      = findspecies("", site, species_defs)
+            site_name                           = site_names[1]
+            (; formation_energy, frequencies)   = findspecies(species_name, energy_table; surface_name, site_name)
+            specieslist[s]                      = TstateSpecies(;formation_energy, coverage, site, surface_name, frequencies, sigma_params)
+        elseif !isnothing(match_site)
+            site            = match_site[:site]
+            (; site_names)  = findspecies("", site, species_defs)
+            specieslist[s]  = SiteSpecies(0.0, site_names[1])
+        else
+            throw(ArgumentError("species $s is not a valid ficitious gas, gas, adsorbate, transitation state, or site"))
         end
     end
-        
+    specieslist
+end
+
+function findspecies(species_name::AbstractString, site::AbstractString, species_defs)
+    species = isempty(species_name) ? site : "$(species_name)_$(site)"
+    try
+        (; [Symbol(k) => v for (k,v) in species_defs[species]]...)
+    catch e
+        if isa(e, KeyError)
+            throw(ArgumentError("species $(species_name)_$(site) is not specified in species_definitions"))
+        else
+            throw(e)
+        end
     end
+end
+
+function findspecies(species_name::AbstractString, energy_table; surface_name="None", site_name="gas")
+    found = nothing
+    for row in energy_table
+        if (row.surface_name == surface_name) && (row.site_name == site_name) && (row.species_name == species_name)
+            found = row
+        end
+    end
+    if isnothing(found)
+        throw(ArgumentError("species $(species_name) is not specified in the energy table"))
+    end
+    found
 end
