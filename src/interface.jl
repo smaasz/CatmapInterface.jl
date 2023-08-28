@@ -288,9 +288,12 @@ end
 function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_table, surface_name)
     # collect all species in a set
     species = Set{String}()
-    for (; educts, products) in reactions
+    for (; educts, products, tstate) in reactions
         union!(species, first.(educts))
         union!(species, first.(products))
+        if !isnothing(tstate)
+            union!(species, [tstate.symbol])
+        end
     end
     specieslist = Dict{String, AbstractSpecies}()
     for s in species
@@ -329,7 +332,7 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
             (; site_names)                      = findspecies("", site, species_defs)
             site_name                           = site_names[1]
             (; formation_energy, frequencies)   = findspecies(species_name, energy_table; surface_name, site_name)
-            specieslist[s]                      = TstateSpecies(;formation_energy, coverage, site, surface_name, frequencies, sigma_params)
+            specieslist[s]                      = TStateSpecies(;formation_energy, coverage, site, surface_name, frequencies, sigma_params)
         elseif !isnothing(match_site)
             site            = match_site[:site]
             (; site_names)  = findspecies("", site, species_defs)
