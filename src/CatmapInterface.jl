@@ -7,6 +7,8 @@ using DifferentialEquations
 using ProgressBars
 using NonlinearSolve
 using Interpolations
+using Catalyst
+using DelimitedFiles
 
 function __init__()
     py"""
@@ -63,7 +65,7 @@ function __init__()
             if vary_sigma and ('voltage' in model.descriptor_names):
                 rxn_params_grid[i] = {}
                 voltage_reduced  = descriptor_values[model.descriptor_names.index('voltage')] - model.extrapolated_potential
-                voltage_diff_drops = linspace(0.0, voltage_reduced, 20) if (voltage_reduced > 0) else linspace(voltage_reduced, 0.0, 20)
+                voltage_diff_drops = linspace(0.0, voltage_reduced, 100) if (voltage_reduced > 0) else linspace(voltage_reduced, 0.0, 100)
                 sigmas = [(voltage_reduced - voltage_diff_drop) * Stern_capacitance for voltage_diff_drop in voltage_diff_drops]
                 for sigma in sigmas:
                     model.sigma_input = sigma
@@ -113,6 +115,8 @@ function __init__()
     """
 end
 
+
+include("interface.jl")
 
 include("kineticmodel.jl")
 export get_catmap_output
