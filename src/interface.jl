@@ -137,13 +137,14 @@ function parse_reactant_sum(rs)
     else
         throw(ArgumentError("$rs is not a valid sum of reactants"))
     end
-    reactant = r"^(?<factor>[1-9][0-9]*)?(?<symbol>[A-Za-z0-9]*\*?_[a-z])$"
+    reactant = r"^(?<factor>[1-9][0-9]*)?(?<species>[A-Za-z0-9]*)\*?_(?<site>[a-z])$"
     reactants = Pair{String, Int}[]
     for rt in rts
         match_reactant = match(reactant, rt)
         if !isnothing(match_reactant)
             factor = isnothing(match_reactant[:factor]) ? 1 : parse(Int, match_reactant[:factor])
-            push!(reactants, match_reactant[:symbol] => factor)
+            symbol = "$(match_reactant[:species])_$(match_reactant[:site])"
+            push!(reactants, symbol => factor)
         else
             throw(ArgumentError("$rt is not a valid reactant"))
         end
@@ -295,9 +296,9 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
     for s in species
         match_fictious  = match(r"^(?<species_name>ele|OH)_g$", s)
         match_gas       = match(r"^(?<species_name>[A-Za-z0-9]+)_g$", s)
-        match_adsorbate = match(r"^(?<species_name>[A-Za-z0-9]+)\*_(?<site>[^g])$", s)
-        match_tstate    = match(r"^(?<species_name>[A-Za-z0-9\-]+)\*_(?<site>[^g])$", s)
-        match_site      = match(r"^\*_(?<site>[^g])$", s)
+        match_adsorbate = match(r"^(?<species_name>[A-Za-z0-9]+)_(?<site>[^g])$", s)
+        match_tstate    = match(r"^(?<species_name>[A-Za-z0-9\-]+)_(?<site>[^g])$", s)
+        match_site      = match(r"^_(?<site>[^g])$", s)
         if !isnothing(match_fictious)
             species_name            = match_fictious[:species_name]
             (; pressure)            = findspecies(species_name, "g", species_defs)
