@@ -27,8 +27,7 @@ function create_reaction_network(catmap_params::CatmapParams)
         ss = Symbol(s)
         push!(species_symbols, :($ss(t)))
     end
-    @variables t
-    species_num = eval(:(@species $(species_symbols...)))
+    species_num = eval(:(@variables t; @species $(species_symbols...)))
     rxs         = Reaction[]
     for ((; educts, products, tstate), prefactor) in zip(catmap_params.reactions, catmap_params.prefactors)
         Gf_IS = Num(0.0)

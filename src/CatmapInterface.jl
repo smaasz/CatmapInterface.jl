@@ -1,21 +1,11 @@
+__precompile__()
 module CatmapInterface
 
-ENV["PYCALL_JL_RUNTIME_PYTHON"] = Sys.which("python3")
 using PyCall
 
-#using DifferentialEquations
-#using ProgressBars
-#using NonlinearSolve
-#using Interpolations
-using Catalyst
-using DelimitedFiles
-using LessUnitful
-
-function __init__()
-    @pyinclude("data/parameter_data.py")
-    const ideal_gas_params = py"ideal_gas_params"
-    const hbond_dict = py"hbond_dict"
-    
+function __init__()  
+    pyimport_conda("ase.thermochemistry", "ase")
+    pyimport_conda("ase.build", "ase")
     py"""
 from ase.thermochemistry import HarmonicThermo, IdealGasThermo
 from ase.build import molecule
@@ -23,8 +13,6 @@ from ase.build import molecule
 def get_thermal_correction_adsorbate(T, frequencies):
     thermo = HarmonicThermo(frequencies)
     return thermo.get_helmholtz_energy(T, verbose=False)
-
-
 
 def get_thermal_correction_ideal_gas(T, frequencies, symmetrynumber, geometry, spin, name):
     thermo = IdealGasThermo(frequencies, geometry, atoms=molecule(name), symmetrynumber=symmetrynumber, spin=spin) 
@@ -34,10 +22,36 @@ def get_thermal_correction_ideal_gas(T, frequencies, symmetrynumber, geometry, s
     free_energy = H-T*S
     return free_energy
 	"""
+    #@show py"get_thermal_correction_adsorbate"
+end
 
-	get_thermal_correction_ideal_gas = py"get_thermal_correction_ideal_gas"
-	get_thermal_correction_adsorbate = py"get_thermal_correction_adsorbate"
-    # py"""
+#get_thermal_correction_ideal_gas = py"get_thermal_correction_ideal_gas"
+#get_thermal_correction_adsorbate = py"get_thermal_correction_adsorbate"
+
+@pyinclude(joinpath(@__DIR__, "../data/parameter_data.py"))
+ideal_gas_params = py"ideal_gas_params"
+hbond_dict = py"hbond_dict"
+
+using Catalyst
+using DelimitedFiles
+using LessUnitful
+include("interface.jl")
+export parse_catmap_input
+include("corrections.jl")
+include("reaction_network.jl")
+export create_reaction_network
+
+# include("kineticmodel.jl")
+# export get_catmap_output
+# export convert_to_julia
+
+# include("solver.jl")
+# export compute_coverage_map
+# export compute_coverage
+
+end
+
+# py"""
     # from catmap import ReactionModel
 
     # def catmap_kinetic_model(setup_file, vary_sigma=False, Stern_capacitance=20.0):
@@ -139,21 +153,3 @@ def get_thermal_correction_ideal_gas(T, frequencies, symmetrynumber, geometry, s
 
     #     return descriptor_grid, rate_constants_grid, steady_state_expressions, model.elementary_rxns, model.gas_names
     # """
-end
-
-
-include("interface.jl")
-export parse_catmap_input
-
-include("reaction_network.jl")
-export create_reaction_network
-
-# include("kineticmodel.jl")
-# export get_catmap_output
-# export convert_to_julia
-
-# include("solver.jl")
-# export compute_coverage_map
-# export compute_coverage
-
-end

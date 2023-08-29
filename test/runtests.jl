@@ -1,12 +1,13 @@
-using CatmapInterface
 using Test
+using CatmapInterface
+using Catalyst
 
 catmap_params   = parse_catmap_input("catmap_CO2R_template.mkm")
 rn              = create_reaction_network(catmap_params)
 
 @testset "CatmapInterface.jl" begin
-    @test length(reactions(rn)) = 5
-    @test length(species(rn)) == 11
+    @test numreactions(rn) == 2*5
+    @test numspecies(rn) == 10
 end
 
 # θ       = [0.2, 0.8]

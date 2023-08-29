@@ -5,7 +5,7 @@ function ideal_gas(energies, species_list, T)
             (; species_name, frequencies) = sp
             try
                 (symmetrynumber, geometry, spin) = ideal_gas_params[s]
-                energies[s] += get_thermal_correction_ideal_gas(T, frequencies, symmetrynumber, geometry, spin, species_name) * eV
+                energies[s] += py"get_thermal_correction_ideal_gas"(T, frequencies, symmetrynumber, geometry, spin, species_name) * eV
             catch e
                 if isa(e, KeyError)
                     throw(ArgumentError("$s has no specified ideal gas parameters"))
@@ -22,7 +22,7 @@ function harmonic_adsorbate(energies, species_list, T)
     for (s, sp) in species_list
         if isa(sp, AdsorbateSpecies)
             (; frequencies) = sp
-            energies[s] += get_thermal_correction_adsorbate(T, frequencies) * eV
+            energies[s] += py"get_thermal_correction_adsorbate"(T, frequencies) * eV
         end
     end
 end
