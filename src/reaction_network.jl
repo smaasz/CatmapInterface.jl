@@ -4,9 +4,8 @@ function rateconstants(prefactor, Gf_IS, Gf_TS, T, activity_coeffs)
 end
 
 function create_reaction_network(catmap_params::CatmapParams)
-    T = catmap_params.T 
+    (; species_list, T, potential_reference_scale, Upzc) = catmap_params
 
-    species_list = catmap_params.species_list
     species_strings = keys(species_list)
     species_strings_to_idxs = Dict(zip(species_strings, 1:length(species_strings)))
 
@@ -16,19 +15,19 @@ function create_reaction_network(catmap_params::CatmapParams)
 
     free_energies = Dict(zip(keys(species_list), fill(Num(0.0), length(species_list))))
     # thermo corrections
-    gas_thermo_correction!(free_energies, species_list)
-    adsorbate_thermo_correction!(free_energies, species_list)
+    gas_thermo_correction!(free_energies, species_list, T)
+    adsorbate_thermo_correction!(free_energies, species_list, T)
 
-    @parameters σ ϕ_we local_pH a[1:length(species_list)]
+    @parameters σ ϕ_we ϕ local_pH a[1:length(species_list)]
     # electrochemical corrections
-    electrochemical_thermo_correction!(free_energies, species_list, σ, ϕ_we, local_pH, T)
+    electrochemical_thermo_correction!(free_energies, species_list, σ, ϕ_we, ϕ, Upzc, local_pH, T; potential_reference_scale)
 
-    @variables t
     species_symbols = Expr[]
     for s in species_strings
         ss = Symbol(s)
         push!(species_symbols, :($ss(t)))
     end
+    @variables t
     species_num = eval(:(@species $(species_symbols...)))
     rxs         = Reaction[]
     for ((; educts, products, tstate), prefactor) in zip(catmap_params.reactions, catmap_params.prefactors)

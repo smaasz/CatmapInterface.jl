@@ -1,31 +1,12 @@
 using CatmapInterface
 using Test
-using DifferentialEquations
-using CSV
 
-function get_catmap_coverage_map(csvfile_path)
-
-    file = CSV.File(csvfile_path, header = ["d1", "d2", "c1", "c2"])
-    entries = []
-    for row in file
-        push!(entries, ([row.d1, row.d2], [row.c1, row.c2]))
-    end
-
-    Dict(entries)
-end
-
-
-(descriptor_grid, rxn_parameter_grid, kinetic_model!, compute_rates)   = get_catmap_output("./CO_oxidation.mkm", "./energies.txt")
-
-#kinetic_model! = convert_to_julia(kinetic_model)
-
-catmap_coverage_map = get_catmap_coverage_map("./coverage_map_catmap.csv")
-coverage_map        = compute_coverage_map(descriptor_grid, rxn_parameter_grid, kinetic_model!, [0.0, 1.0], [1.0, 1.0, 1.0]; use_odesolver=true)
+catmap_params   = parse_catmap_input("catmap_CO2R_template.mkm")
+rn              = create_reaction_network(catmap_params)
 
 @testset "CatmapInterface.jl" begin
-    for descriptor_values in eachrow(descriptor_grid)
-        @test catmap_coverage_map[descriptor_values] ≈ coverage_map[descriptor_values] rtol = 1e-4
-    end
+    @test length(reactions(rn)) = 5
+    @test length(species(rn)) == 11
 end
 
 # θ       = [0.2, 0.8]

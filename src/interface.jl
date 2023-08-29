@@ -205,14 +205,16 @@ function parse_vector(s, Tval)::Vector{Tval}
 end
 
 function parse_energy_table(input_file_path)
+    @local_unitfactors eV cm
+    @local_phconstants h c_0
     (dc, dh) = readdlm(input_file_path, '\t', String; header=true)
     entry_types = [
         :surface_name      => String, 
         :site_name         => String,
         :species_name      => String,
-        :formation_energy  => Float64,
+        :formation_energy  => Float64, #in eV
         :bulk_structure    => String,
-        :frequencies       => Vector{Float64},
+        :frequencies       => Vector{Float64}, # in (h / cm / eV * c_0)^-1
         :other_parameters  => Vector{String},
         :reference         => String,
     ]
@@ -229,6 +231,10 @@ function parse_energy_table(input_file_path)
             try
                 if entry_type == String
                     push!(row, entry_header => entry)
+                elseif entry_header == :formation_energy
+                    push!(row, entry_header => parse(entry_type, entry) * eV)
+                elseif entry_header == :frequencies
+                    push!(row, entry_header => parse_vector(entry, eltype(entry_type)) .* h / cm / eV * c_0)
                 elseif entry_type <: Number
                     push!(row, entry_header => parse(entry_type, entry))
                 elseif entry_type <: Vector
@@ -339,6 +345,9 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
         end
     end
     for (; tstate) in reactions
+        if isnothing(tstate)
+            continue
+        end
         match_tstate = match(r"^(?<species_name>[A-Za-z0-9\-]+)_(?<site>[^g])$", tstate.symbol)
         if !isnothing(match_tstate)
             species_name                        = match_tstate[:species_name]
@@ -349,35 +358,36 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
             (; site_names)                      = findspecies("", site, species_defs)
             site_name                           = site_names[1]
             (; formation_energy, frequencies)   = findspecies(species_name, energy_table; surface_name, site_name)
-            specieslist[s]                      = TStateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params, tstate.beta)
+            specieslist[tstate.symbol]                      = TStateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params, β=tstate.beta)
         else
             throw(ArgumentError("$(tstate.symbol) is not a valid transition state"))
         end
-        # special case to make sure that H2_g and H2O_g are contained in the list
-        if !haskey(specieslist, "H2_g")
-            try
-                (; formation_energy, frequencies)   = findspecies("H2_g", energy_table)
-                pressure                            = 0.0
-                specieslist[s]                      = GasSpecies(; "H2_g", formation_energy, pressure, frequencies)
-            catch e
-                if !isa(e, ArgumentError)
-                    throw(e)
-                end
-            end
-        end
-        if !haskey(specieslist, "H2O_g")
-            try
-                (; formation_energy, frequencies)   = findspecies("H2O_g", energy_table)
-                pressure                            = 0.0
-                specieslist[s]                      = GasSpecies(; "H2O_g", formation_energy, pressure, frequencies)
-            catch e
-                if !isa(e, ArgumentError)
-                    throw(e)
-                end
-            end
-        end
-        specieslist
     end
+    # special case to make sure that H2_g and H2O_g are contained in the list
+    if !haskey(specieslist, "H2_g")
+        try
+            (; formation_energy, frequencies)   = findspecies("H2_g", energy_table)
+            pressure                            = 0.0
+            specieslist["H2_g"]                 = GasSpecies(; species_name="H2_g", formation_energy, pressure, frequencies)
+        catch e
+            if !isa(e, ArgumentError)
+                throw(e)
+            end
+        end
+    end
+    if !haskey(specieslist, "H2O_g")
+        try
+            (; formation_energy, frequencies)   = findspecies("H2O_g", energy_table)
+            pressure                            = 0.0
+            specieslist["H2O_g"]                = GasSpecies(; species_name="H2O_g", formation_energy, pressure, frequencies)
+        catch e
+            if !isa(e, ArgumentError)
+                throw(e)
+            end
+        end
+    end
+    specieslist
+end
 
 function findspecies(species_name::AbstractString, site::AbstractString, species_defs)
     species = isempty(species_name) ? site : "$(species_name)_$(site)"

@@ -1,14 +1,10 @@
-@pyinclude("data/parameter_data.py")
-const ideal_gas_params = py"ideal_gas_params"
-const hbond_dict = py"hbond_dict"
-
 function ideal_gas(energies, species_list, T)
     @local_unitfactors eV
     for (s, sp) in species_list
         if isa(sp, GasSpecies)
             (; species_name, frequencies) = sp
             try
-                (symmetrynumber, geometry, spin) = ideal_gas_params(s)
+                (symmetrynumber, geometry, spin) = ideal_gas_params[s]
                 energies[s] += get_thermal_correction_ideal_gas(T, frequencies, symmetrynumber, geometry, spin, species_name) * eV
             catch e
                 if isa(e, KeyError)
@@ -21,7 +17,7 @@ function ideal_gas(energies, species_list, T)
     end
 end
 
-function harmonic_adsorbate(energies, species_list)
+function harmonic_adsorbate(energies, species_list, T)
     @local_unitfactors eV
     for (s, sp) in species_list
         if isa(sp, AdsorbateSpecies)
@@ -39,7 +35,7 @@ function hbond_surface_charge_density(energies, species_list, σ, ϕ_we, ϕ, ϕ_
     end
     for (s, sp) in species_list
         if isa(sp, TStateSpecies)
-            (; beta) = sp
+            (; β) = sp
             energies[s] += (-(ϕ_we - ϕ) + β * (ϕ_we - ϕ - ϕ_pzc)) * eV
         end
     end
@@ -61,7 +57,7 @@ function hbond_surface_charge_density(energies, species_list, σ, ϕ_we, ϕ, ϕ_
     end
     # pH_correction
     if haskey(species_list, "H_g") || haskey(species_list, "OH_g")
-        G_H2 = energies["H_g"]
+        G_H2 = energies["H2_g"]
         if potential_reference_scale == "RHE"
             G_H = G_H2 * 0.5 - 0.0592 * local_pH / 298.14 * T
         elseif potential_reference_scale == "SHE"
