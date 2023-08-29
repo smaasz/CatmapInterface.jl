@@ -4,6 +4,8 @@ function rateconstants(prefactor, Gf_IS, Gf_TS, T, activity_coeffs)
 end
 
 function create_reaction_network(catmap_params::CatmapParams)
+    T = catmap_params.T 
+
     species_list = catmap_params.species_list
     species_strings = keys(species_list)
     species_strings_to_idxs = Dict(zip(species_strings, 1:length(species_strings)))
@@ -17,7 +19,7 @@ function create_reaction_network(catmap_params::CatmapParams)
     gas_thermo_correction!(free_energies, species_list)
     adsorbate_thermo_correction!(free_energies, species_list)
 
-    @parameters σ ϕ_we T local_pH a[1:length(species_list)]
+    @parameters σ ϕ_we local_pH a[1:length(species_list)]
     # electrochemical corrections
     electrochemical_thermo_correction!(free_energies, species_list, σ, ϕ_we, local_pH, T)
 
