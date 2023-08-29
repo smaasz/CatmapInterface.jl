@@ -340,15 +340,10 @@ begin
 	catmap_params 	= parse_catmap_input("../test/catmap_CO2R_template.mkm")
 	rn 				= create_reaction_network(catmap_params)
 	odesys 			= convert(ODESystem, rn; combinatoric_ratelaws=false)
-	const mk_f! 	= ODEFunction(odesys, dvs=[])
-	latexify(rn)
+	mk_f! 	= ODEFunction(odesys).f.f_iip
+	@show states(odesys), Catalyst.parameters(odesys)
+	mk_f!
 end
-
-# ╔═╡ d154b763-bd23-4c6a-b8be-550a6d2a9a2e
-symmap_to_varmap(rn, [:COOH_t => 1.0])
-
-# ╔═╡ 06470738-77d5-41f6-a0c4-2d5c45b359c5
-species(rn)
 
 # ╔═╡ d2c0642d-dfa5-4a76-bd36-ac4a735a3299
 md"""
@@ -369,6 +364,45 @@ where the gap capacitance between the working electrode and the reaction plane (
 
 __Question is the pH-dependence only in the reaction rate constants (i.e. activity of OH⁻ must be set to 0)?__
 """
+
+# ╔═╡ 91113083-d80e-4528-be41-82d10f6860fc
+function we_breactions(f, 
+		u::VoronoiFVM.BNodeUnknowns{Tval, Tv, Tc, Tp, Ti}, 
+		bnode, 
+		data
+	) where {Tval, Tv, Tc, Tp, Ti}
+	(; ip, iϕ, v0, v, M0, M, κ, RT, nc, pscale, p_bulk, ϕ_we) = data
+		p = u[ip] * pscale-p_bulk
+
+    	@views c0, bar_c = c0_barc(u[:], data)
+
+		## Calculate the  activity coefficients first,
+		## as these expressions are less degenerating.
+		γ_co2 = let 
+			Mrel = M[ico2] / M0
+			barv=v[ico2] + κ[ico2]*v0
+			tildev=barv - Mrel*v0
+		 	-rlog(exp(tildev * p / (RT)) * (bar_c / c0)^Mrel*(1/bar_c))
+		end
+
+		γ_co = let
+			Mrel = M[ico] / M0
+			barv=v[ico] + κ[ico]*v0
+			tildev=barv - Mrel*v0
+			-rlog(exp(tildev * p / (RT)) * (bar_c / c0)^Mrel*(1/bar_c))
+		end
+
+	σ = C_gap * (ϕ_we - u[iϕ] - ϕ_pzc)
+	γ_t = 1 - u[ico2_t] - u[ico_t] - u[icooh_t]
+
+	@views mk_f!(
+		f[[ico2, ico2_t, icooh_t, iohminus, ico_t, ico]], 
+		u[[ico2, ico2_t, icooh_t, iohminus, ico_t, ico]],
+		Vector{Tval}([γ_co2, γ_t, 1.0, 1.0, σ, ϕ_we, ϕ_pzc]),
+		nothing
+	)
+	f[[ico2, iohminus, ico]] .*= S
+end
 
 # ╔═╡ 6af06a57-47ea-4c8c-959f-232d9dcc2dfc
 #=╠═╡
@@ -453,7 +487,6 @@ celldata = ElectrolyteData(;nc    = nc,
 						  	scheme= scheme,);
 
 # ╔═╡ dc203e95-7763-4b13-8408-038b933c5c9c
-#=╠═╡
 function halfcellbc(
 	f,
 	u::VoronoiFVM.BNodeUnknowns{Tval, Tv, Tc, Tp, Ti}, 
@@ -473,7 +506,6 @@ function halfcellbc(
 	end
 	nothing
 end;
-  ╠═╡ =#
 
 # ╔═╡ 842b074b-f808-48d8-8dc5-110ddd907f90
 md"""
@@ -481,7 +513,6 @@ md"""
 """
 
 # ╔═╡ 84d1270b-8df5-4d5d-a153-da4ffdb1d283
-#=╠═╡
 function simulate_CO2R(grid, celldata; voltages = (-1.5:0.1:-0.0) * V, kwargs...)
     kwargs 	 	= merge(solver_control, kwargs) 
     cell        = PNPSystem(grid; bcondition=halfcellbc, reaction=reaction, celldata)
@@ -489,12 +520,9 @@ function simulate_CO2R(grid, celldata; voltages = (-1.5:0.1:-0.0) * V, kwargs...
 
 	cell, ivresult
 end;
-  ╠═╡ =#
 
 # ╔═╡ 11b12556-5b61-42c2-a911-4ea98a0a1e85
-#=╠═╡
 cell, result = simulate_CO2R(grid, celldata);
-  ╠═╡ =#
 
 # ╔═╡ 114d2324-5289-4e44-8d77-736a9bdec365
 md"""
@@ -2564,10 +2592,9 @@ version = "17.4.0+0"
 # ╟─8912f990-6b02-467a-bd11-92f94818b1c7
 # ╟─a8157cc1-1761-4b11-a37c-9e12a9ca695e
 # ╠═6b5cf93c-0df3-4a18-8786-502361736838
-# ╠═d154b763-bd23-4c6a-b8be-550a6d2a9a2e
-# ╠═06470738-77d5-41f6-a0c4-2d5c45b359c5
 # ╟─d2c0642d-dfa5-4a76-bd36-ac4a735a3299
 # ╟─06d45088-ab8b-4e5d-931d-b58701bf8464
+# ╠═91113083-d80e-4528-be41-82d10f6860fc
 # ╠═6af06a57-47ea-4c8c-959f-232d9dcc2dfc
 # ╟─d0093605-0e35-4888-a93c-8456c698e6f0
 # ╟─f0b5d356-6b97-4878-98de-bee5f380d41a

@@ -6,9 +6,6 @@ end
 function create_reaction_network(catmap_params::CatmapParams)
     (; species_list, T, potential_reference_scale, Upzc) = catmap_params
 
-    species_strings = keys(species_list)
-    species_strings_to_idxs = Dict(zip(species_strings, 1:length(species_strings)))
-
     gas_thermo_correction!             = getfield(@__MODULE__, catmap_params.gas_thermo_mode)
     adsorbate_thermo_correction!       = getfield(@__MODULE__, catmap_params.adsorbate_thermo_mode)
     electrochemical_thermo_correction! = getfield(@__MODULE__, catmap_params.electrochemical_thermo_mode)
@@ -22,13 +19,20 @@ function create_reaction_network(catmap_params::CatmapParams)
     # electrochemical corrections
     electrochemical_thermo_correction!(free_energies, species_list, σ, ϕ_we, ϕ, Upzc, local_pH, T; potential_reference_scale)
 
-    species_symbols = Expr[]
-    for s in species_strings
-        ss = Symbol(s)
-        push!(species_symbols, :($ss(t)))
+    @variables t
+    vars        = Dict{String, Num}()
+    activ_coefs = Dict{String, Num}()
+    for (s, sp) in species_list
+        ss  = Symbol(s)
+        if (isa(sp, GasSpecies) && s ≠ "H2O_g") || isa(sp, AdsorbateSpecies) || (isa(sp, FictiousSpecies) && s ≠ "ele_g")
+            vars[s] = first(@species $ss(t))
+        end
+        if isa(sp, GasSpecies) || s == "ele_g" || isa(sp, SiteSpecies)
+            as              = Symbol("γ$s")
+            activ_coefs[s]  = first(@parameters $as)
+        end
     end
-    species_num = eval(:(@variables t; @species $(species_symbols...)))
-    rxs         = Reaction[]
+    rxs = Reaction[]
     for ((; educts, products, tstate), prefactor) in zip(catmap_params.reactions, catmap_params.prefactors)
         Gf_IS = Num(0.0)
         Gf_FS = Num(0.0)
@@ -40,16 +44,26 @@ function create_reaction_network(catmap_params::CatmapParams)
         af = Num[]
         ar = Num[]
         for (educt, factor) in educts
-            push!(es, species_num[species_strings_to_idxs[educt]])
-            push!(αs, factor)
-            push!(af, a[species_strings_to_idxs[educt]])
-            Gf_IS += free_energies[educt]
+            sp = species_list[educt]
+            if (isa(sp, GasSpecies) && educt ≠ "H2O_g") || isa(sp, AdsorbateSpecies) || (isa(sp, FictiousSpecies) && educt ≠ "ele_g")
+                push!(es, vars[educt])
+                push!(αs, factor)
+            end
+            if isa(sp, GasSpecies) || educt == "ele_g" || isa(sp, SiteSpecies)
+                push!(af, activ_coefs[educt]^factor)
+            end
+            Gf_IS += factor * free_energies[educt]
         end
         for (product, factor) in products
-            push!(ps, species_num[species_strings_to_idxs[product]])
-            push!(βs, factor)
-            push!(ar, a[species_strings_to_idxs[product]])
-            Gf_FS += free_energies[product]
+            sp = species_list[product]
+            if (isa(sp, GasSpecies) && product ≠ "H2O_g") || isa(sp, AdsorbateSpecies) || (isa(sp, FictiousSpecies) && product ≠ "ele_g")
+                push!(ps, vars[product])
+                push!(βs, factor)
+            end
+            if isa(sp, GasSpecies) || product == "ele_g" || isa(sp, SiteSpecies)
+                push!(ar, activ_coefs[product]^factor)
+            end
+            Gf_FS += factor * free_energies[product]
         end
         Gf_TS = isnothing(tstate) ? max(Gf_IS, Gf_FS) : free_energies[tstate.symbol]
         rxn_f = Reaction(rateconstants(prefactor, Gf_IS, Gf_TS, T, af), es, ps, αs, βs)

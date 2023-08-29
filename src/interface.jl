@@ -118,11 +118,11 @@ struct CatmapParams
             end
         end
         # check that the provided modes are defined
-        # for mode in [gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode]
-        #     if !isdefined(@__MODULE__, mode)
-        #         throw(ArgumentError("$(String(:mode))=$mode is not implemented"))
-        #     end
-        # end
+        for mode in [gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode]
+            if !isdefined(@__MODULE__, mode)
+                throw(ArgumentError("$(String(:mode))=$mode is not implemented"))
+            end
+        end
         # check that reference scale is either RHE or SHE
         if !(potential_reference_scale == "RHE" || potential_reference_scale == "SHE")
             throw(ArgumentError("$potential_reference_scale must be either SHE or RHE"))
@@ -358,34 +358,39 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
             (; site_names)                      = findspecies("", site, species_defs)
             site_name                           = site_names[1]
             (; formation_energy, frequencies)   = findspecies(species_name, energy_table; surface_name, site_name)
-            specieslist[tstate.symbol]                      = TStateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params, β=tstate.beta)
+            specieslist[tstate.symbol]          = TStateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params, β=tstate.beta)
         else
             throw(ArgumentError("$(tstate.symbol) is not a valid transition state"))
         end
     end
     # special case to make sure that H2_g and H2O_g are contained in the list
     if !haskey(specieslist, "H2_g")
+        pressure = 1.0
+        local formation_energy, frequencies
         try
-            (; formation_energy, frequencies)   = findspecies("H2_g", energy_table)
-            pressure                            = 0.0
-            specieslist["H2_g"]                 = GasSpecies(; species_name="H2_g", formation_energy, pressure, frequencies)
+            (; formation_energy, frequencies) = findspecies("H2", energy_table)
         catch e
             if !isa(e, ArgumentError)
                 throw(e)
             end
+        else
+            specieslist["H2_g"] = GasSpecies(; species_name="H2", formation_energy, pressure, frequencies) 
         end
     end
     if !haskey(specieslist, "H2O_g")
+        pressure = 1.0
+        local formation_energy, frequencies
         try
-            (; formation_energy, frequencies)   = findspecies("H2O_g", energy_table)
-            pressure                            = 0.0
-            specieslist["H2O_g"]                = GasSpecies(; species_name="H2O_g", formation_energy, pressure, frequencies)
+            (; formation_energy, frequencies) = findspecies("H2O", energy_table)
         catch e
             if !isa(e, ArgumentError)
                 throw(e)
             end
+        else
+            specieslist["H2O_g"] = GasSpecies(; species_name="H2O", formation_energy, pressure, frequencies) 
         end
     end
+    @assert haskey(specieslist, "H2_g") && haskey(specieslist, "H2O_g")
     specieslist
 end
 
