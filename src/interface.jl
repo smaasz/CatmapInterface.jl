@@ -68,14 +68,15 @@ struct TStateSpecies <: AbstractSpecies
     frequencies::Vector{Float64}
     sigma_params::@NamedTuple{a::Float64, b::Float64}
     β::Float64
-    function TStateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params::@NamedTuple{a::Float64, b::Float64}, β)
+    between_species::Vector{String}
+    function TStateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params::@NamedTuple{a::Float64, b::Float64}, β, between_species)
         if coverage < 0.0 || coverage > 1.0
             throw(DomainError("coverage must be between 0 and 1"))
         end
         if any(frequencies .<= 0.0)
             throw(DomainError("all frequencies must be positive"))
         end
-        new(species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params, β)
+        new(species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params, β, between_species)
     end
 end
 #TStateSpecies(; formation_energy, coverage, site, surface_name, frequencies, sigma_params::Vector{Float64}) = TStateSpecies(; formation_energy, coverage, site, surface_name, frequencies, sigma_params=(; a=sigma_params[1], b=sigma_params[2]))
@@ -310,7 +311,7 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
         union!(species, first.(educts))
         union!(species, first.(products))
     end
-    specieslist = Dict{String, AbstractSpecies}()
+    species_list = Dict{String, AbstractSpecies}()
     for s in species
         match_fictious  = match(r"^(?<species_name>ele|OH)_g$", s)
         match_gas       = match(r"^(?<species_name>[A-Za-z0-9]+)_g$", s)
@@ -321,12 +322,12 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
             (; pressure)            = findspecies(species_name, "g", species_defs)
             (; formation_energy)    = findspecies(species_name, energy_table)
             pressure                = species_defs[s]["pressure"] 
-            specieslist[s]          = FictiousSpecies(; species_name, formation_energy, pressure)
+            species_list[s]         = FictiousSpecies(; species_name, formation_energy, pressure)
         elseif !isnothing(match_gas)
             species_name                        = match_gas[:species_name]
             (; pressure)                        = findspecies(species_name, "g", species_defs)
             (; formation_energy, frequencies)   = findspecies(species_name, energy_table)
-            specieslist[s]                      = GasSpecies(; species_name, formation_energy, pressure, frequencies)
+            species_list[s]                     = GasSpecies(; species_name, formation_energy, pressure, frequencies)
         elseif !isnothing(match_adsorbate)
             species_name                        = match_adsorbate[:species_name]
             site                                = match_adsorbate[:site]
@@ -336,16 +337,16 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
             (; site_names)                      = findspecies("", site, species_defs)
             site_name                           = site_names[1]
             (; formation_energy, frequencies)   = findspecies(species_name, energy_table; surface_name, site_name)
-            specieslist[s]                      = AdsorbateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params)
+            species_list[s]                     = AdsorbateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params)
         elseif !isnothing(match_site)
             site            = match_site[:site]
             (; site_names)  = findspecies("", site, species_defs)
-            specieslist[s]  = SiteSpecies(0.0, site_names[1])
+            species_list[s]  = SiteSpecies(0.0, site_names[1])
         else
             throw(ArgumentError("species $s is not a valid ficitious gas, gas, adsorbate, or site"))
         end
     end
-    for (; tstate) in reactions
+    for (; educts, products, tstate) in reactions
         if isnothing(tstate)
             continue
         end
@@ -359,13 +360,13 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
             (; site_names)                      = findspecies("", site, species_defs)
             site_name                           = site_names[1]
             (; formation_energy, frequencies)   = findspecies(species_name, energy_table; surface_name, site_name)
-            specieslist[tstate.symbol]          = TStateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params, β=tstate.beta)
+            species_list[tstate.symbol]         = TStateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params, β=tstate.beta, between_species=[first.(educts); first.(products)])
         else
             throw(ArgumentError("$(tstate.symbol) is not a valid transition state"))
         end
     end
     # special case to make sure that H2_g and H2O_g are contained in the list
-    if !haskey(specieslist, "H2_g")
+    if !haskey(species_list, "H2_g")
         pressure = 1.0
         local formation_energy, frequencies
         try
@@ -375,10 +376,10 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
                 throw(e)
             end
         else
-            specieslist["H2_g"] = GasSpecies(; species_name="H2", formation_energy, pressure, frequencies) 
+            species_list["H2_g"] = GasSpecies(; species_name="H2", formation_energy, pressure, frequencies) 
         end
     end
-    if !haskey(specieslist, "H2O_g")
+    if !haskey(species_list, "H2O_g")
         pressure = 1.0
         local formation_energy, frequencies
         try
@@ -388,11 +389,11 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
                 throw(e)
             end
         else
-            specieslist["H2O_g"] = GasSpecies(; species_name="H2O", formation_energy, pressure, frequencies) 
+            species_list["H2O_g"] = GasSpecies(; species_name="H2O", formation_energy, pressure, frequencies) 
         end
     end
-    @assert haskey(specieslist, "H2_g") && haskey(specieslist, "H2O_g")
-    specieslist
+    @assert haskey(species_list, "H2_g") && haskey(species_list, "H2O_g")
+    species_list
 end
 
 function findspecies(species_name::AbstractString, site::AbstractString, species_defs)

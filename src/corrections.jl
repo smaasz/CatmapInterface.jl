@@ -25,6 +25,14 @@ function harmonic_adsorbate(energies, species_list, T)
             energies[s] += py"get_thermal_correction_adsorbate"(T, frequencies) * eV
         end
     end
+    for (s, sp) in species_list
+        if isa(sp, TStateSpecies)
+            (; between_species) = sp
+            for bs in between_species
+                energies[s] += 0.5 * energies[bs]
+            end
+        end
+    end
 end
 
 function hbond_surface_charge_density(energies, species_list, σ, ϕ_we, ϕ, ϕ_pzc, local_pH, T; potential_reference_scale)

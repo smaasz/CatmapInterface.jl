@@ -1,6 +1,6 @@
-function rateconstants(prefactor, Gf_IS, Gf_TS, T, activity_coeffs)
+function rateconstants(prefactor, Gf_IS, Gf_TS, T, actionprod)
     @local_phconstants k_B
-    prefactor * exp(-(Gf_TS - Gf_IS) / (k_B * T)) * prod(activity_coeffs)
+    prefactor * exp(-(Gf_TS - Gf_IS) / (k_B * T)) * actionprod
 end
 
 function create_reaction_network(catmap_params::CatmapParams)
@@ -23,13 +23,17 @@ function create_reaction_network(catmap_params::CatmapParams)
     vars        = Dict{String, Num}()
     activ_coefs = Dict{String, Num}()
     for (s, sp) in species_list
-        ss  = Symbol(s)
-        if (isa(sp, GasSpecies) && s ≠ "H2O_g") || isa(sp, AdsorbateSpecies) || (isa(sp, FictiousSpecies) && s ≠ "ele_g")
-            vars[s] = first(@species $ss(t))
-        end
-        if isa(sp, GasSpecies) || s == "ele_g" || isa(sp, SiteSpecies)
-            as              = Symbol("γ$s")
-            activ_coefs[s]  = first(@parameters $as)
+        if s =="H2O_g" || isa(sp, SiteSpecies) # site species and the solvent are not considered proper species
+            as      = Symbol("a$s")
+            vars[s] = first(@parameters $as)
+        elseif (isa(sp, FictiousSpecies) && s ≠ "ele_g") || isa(sp, AdsorbateSpecies) # fictious species and adsorbates have no activity coeff
+            ss          = Symbol(s)
+            vars[s]     = first(@species $ss(t))
+        elseif (isa(sp, GasSpecies) && s ≠  "H2O_g")
+            ss              = Symbol(s)
+            vars[s]         = first(@species $ss(t))
+            gs              = Symbol("γ$s")
+            activ_coefs[s]  = first(@parameters $gs)
         end
     end
     rxs = Reaction[]
@@ -41,33 +45,47 @@ function create_reaction_network(catmap_params::CatmapParams)
         αs = Int[]
         ps = Num[]
         βs = Int[]
-        af = Num[]
-        ar = Num[]
+        af = Num(1.0)
+        ar = Num(1.0)
         for (educt, factor) in educts
             sp = species_list[educt]
-            if (isa(sp, GasSpecies) && educt ≠ "H2O_g") || isa(sp, AdsorbateSpecies) || (isa(sp, FictiousSpecies) && educt ≠ "ele_g")
+            if (educt =="H2O_g" || isa(sp, SiteSpecies))
+                af *= vars[educt]^factor
+            elseif (isa(sp, FictiousSpecies) && educt ≠ "ele_g") # activity is assumed 1 b/c their influence is in rate constant
                 push!(es, vars[educt])
                 push!(αs, factor)
-            end
-            if isa(sp, GasSpecies) || educt == "ele_g" || isa(sp, SiteSpecies)
-                push!(af, activ_coefs[educt]^factor)
+            elseif isa(sp, AdsorbateSpecies) # activity coefficients are assumed to be 1
+                push!(es, vars[educt])
+                push!(αs, factor)
+                af *= vars[educt]^factor
+            elseif (isa(sp, GasSpecies) && educt ≠ "H2O_g")
+                push!(es, vars[educt])
+                push!(αs, factor)
+                af *= (activ_coefs[educt] * vars[educt])^factor
             end
             Gf_IS += factor * free_energies[educt]
         end
         for (product, factor) in products
             sp = species_list[product]
-            if (isa(sp, GasSpecies) && product ≠ "H2O_g") || isa(sp, AdsorbateSpecies) || (isa(sp, FictiousSpecies) && product ≠ "ele_g")
+            if (product =="H2O_g" || isa(sp, SiteSpecies))
+                ar *= vars[product]^factor
+            elseif (isa(sp, FictiousSpecies) && product ≠ "ele_g") # activity is assumed 1 b/c their influence is in rate constant
                 push!(ps, vars[product])
                 push!(βs, factor)
-            end
-            if isa(sp, GasSpecies) || product == "ele_g" || isa(sp, SiteSpecies)
-                push!(ar, activ_coefs[product]^factor)
+            elseif isa(sp, AdsorbateSpecies) # activity coefficients are assumed to be 1
+                push!(ps, vars[product])
+                push!(βs, factor)
+                ar *= vars[product]^factor
+            elseif (isa(sp, GasSpecies) && product ≠ "H2O_g")
+                push!(ps, vars[product])
+                push!(βs, factor)
+                ar *= (activ_coefs[product] * vars[product])^factor
             end
             Gf_FS += factor * free_energies[product]
         end
         Gf_TS = isnothing(tstate) ? max(Gf_IS, Gf_FS) : free_energies[tstate.symbol]
-        rxn_f = Reaction(rateconstants(prefactor, Gf_IS, Gf_TS, T, af), es, ps, αs, βs)
-        rxn_r = Reaction(rateconstants(prefactor, Gf_FS, Gf_TS, T, ar), ps, es, βs, αs)
+        rxn_f = Reaction(rateconstants(prefactor, Gf_IS, Gf_TS, T, af), es, ps, αs, βs; only_use_rate=true)
+        rxn_r = Reaction(rateconstants(prefactor, Gf_FS, Gf_TS, T, ar), ps, es, βs, αs; only_use_rate=true)
         push!(rxs, rxn_f)
         push!(rxs, rxn_r)
     end
