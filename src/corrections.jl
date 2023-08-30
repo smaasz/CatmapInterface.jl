@@ -52,15 +52,15 @@ function hbond_surface_charge_density(energies, species_list, σ, ϕ_we, ϕ, ϕ_
     for (s, sp) in species_list
         if isa(sp, AdsorbateSpecies) || isa(sp, TStateSpecies)
             (; a, b) = sp.sigma_params
-            energies[s] += a * σ + b * σ^2
+            energies[s] += (a * σ + b * σ^2) * eV
         end
     end
     # pH_correction
     if haskey(species_list, "H_g") || haskey(species_list, "OH_g")
         G_H2 = energies["H2_g"]
-        if potential_reference_scale == "RHE"
-            G_H = G_H2 * 0.5 - 0.0592 * local_pH / 298.14 * T
-        elseif potential_reference_scale == "SHE"
+        if potential_reference_scale == "SHE"
+            G_H = G_H2 * 0.5 - (0.0592 * local_pH / 298.14 * T) * eV
+        elseif potential_reference_scale == "RHE"
             G_H = G_H2 * 0.5
         end
         G_H2O = energies["H2O_g"]

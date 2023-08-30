@@ -34,11 +34,17 @@ begin
 	using Latexify
 	using ModelingToolkit
 	using Catalyst
+	using Printf
 	# if isdefined(Main,:PlutoRunner)
  #        using CairoMakie	
  #   		default_plotter!(CairoMakie)
  # 		CairoMakie.activate!(type="svg")
  #    end
+end;
+
+# ╔═╡ 7708e4a0-1751-4614-9c47-bd997c3cd765
+begin
+	using MethodAnalysis
 end;
 
 # ╔═╡ beae1479-1c0f-4a55-86e1-ad2b50174c83
@@ -345,6 +351,9 @@ begin
 	mk_f!
 end
 
+# ╔═╡ 1d2d924a-ba62-4aa6-ad94-b7512738658e
+@show methodinstances(mk_f!)[2]
+
 # ╔═╡ d2c0642d-dfa5-4a76-bd36-ac4a735a3299
 md"""
 ##### Reaction Rates
@@ -366,15 +375,18 @@ __Question is the pH-dependence only in the reaction rate constants (i.e. activi
 """
 
 # ╔═╡ 91113083-d80e-4528-be41-82d10f6860fc
-function we_breactions(f, 
-		u::VoronoiFVM.BNodeUnknowns{Tval, Tv, Tc, Tp, Ti}, 
-		bnode, 
-		data
-	) where {Tval, Tv, Tc, Tp, Ti}
-	(; ip, iϕ, v0, v, M0, M, κ, RT, nc, pscale, p_bulk, ϕ_we) = data
+begin
+	const ps_cache = DiffCache(zeros(9), 12)
+	
+	function we_breactions(f, 
+			u::VoronoiFVM.BNodeUnknowns{Tval, Tv, Tc, Tp, Ti}, 
+			bnode, 
+			data
+		) where {Tval, Tv, Tc, Tp, Ti}
+		(; ip, iϕ, v0, v, M0, M, κ, RT, nc, pscale, p_bulk, ϕ_we) = data
 		p = u[ip] * pscale-p_bulk
 
-    	@views c0, bar_c = c0_barc(u[:], data)
+		@views c0, bar_c = c0_barc(u[:], data)
 
 		## Calculate the  activity coefficients first,
 		## as these expressions are less degenerating.
@@ -382,26 +394,41 @@ function we_breactions(f,
 			Mrel = M[ico2] / M0
 			barv=v[ico2] + κ[ico2]*v0
 			tildev=barv - Mrel*v0
-		 	-rlog(exp(tildev * p / (RT)) * (bar_c / c0)^Mrel*(1/bar_c))
+			-rlog(exp(tildev * p / (RT)) * (bar_c / c0)^Mrel*(1/bar_c)) / Hcp_CO2/bar
 		end
 
 		γ_co = let
 			Mrel = M[ico] / M0
 			barv=v[ico] + κ[ico]*v0
 			tildev=barv - Mrel*v0
-			-rlog(exp(tildev * p / (RT)) * (bar_c / c0)^Mrel*(1/bar_c))
+			-rlog(exp(tildev * p / (RT)) * (bar_c / c0)^Mrel*(1/bar_c)) / Hcp_CO/bar
 		end
-
-	σ = C_gap * (ϕ_we - u[iϕ] - ϕ_pzc)
-	γ_t = 1 - u[ico2_t] - u[ico_t] - u[icooh_t]
-
-	@views mk_f!(
-		f[[ico2, ico2_t, icooh_t, iohminus, ico_t, ico]], 
-		u[[ico2, ico2_t, icooh_t, iohminus, ico_t, ico]],
-		Vector{Tval}([γ_co2, γ_t, 1.0, 1.0, σ, ϕ_we, ϕ_pzc]),
-		nothing
-	)
-	f[[ico2, iohminus, ico]] .*= S
+	
+		σ = C_gap * (ϕ_we - u[iϕ] - ϕ_pzc)
+		γ_t = 1 - u[ico2_t] - u[ico_t] - u[icooh_t]
+		local_pH = -log10(u[ihplus] / (mol/dm^3))
+		
+		ps = get_tmp(ps_cache, u[iϕ])
+		ps[1] = γ_co2
+		ps[2] = γ_t
+		ps[3] = σ
+		ps[4] = 1.0
+		ps[5] = 1.0
+		ps[6] = u[iϕ]
+		ps[7] = ϕ_we
+		ps[8] = local_pH
+		ps[9] = γ_co
+		#ps .= [γ_co2, γ_t, σ, 1.0, 1.0, , ϕ_we, local_pH, γ_co]
+	
+		@views mk_f!(
+			f[[ico2, ico2_t, icooh_t, iohminus, ico_t, ico]], 
+			u[[ico2, ico2_t, icooh_t, iohminus, ico_t, ico]],
+			ps,
+			nothing
+		)
+		@views f[[ico2, ico2_t, icooh_t, iohminus, ico_t, ico]] .*= -1
+		@views f[[ico2, iohminus, ico]] .*= S
+	end
 end
 
 # ╔═╡ 6af06a57-47ea-4c8c-959f-232d9dcc2dfc
@@ -530,34 +557,18 @@ Show only pH: $(@bind useonly_pH PlutoUI.CheckBox(default=false))
 """
 
 # ╔═╡ 659091d3-60b2-4158-80e2-cd28a492e870
-#=╠═╡
 (~, default_index) = findmin(abs, result.voltages .+ 0.9 * ufac"V");
-  ╠═╡ =#
+
+# ╔═╡ 3bcb8261-5b98-4f4d-a9fe-fb71d5c5b476
+md"""
+$(@bind vindex PlutoUI.Slider(1:5:length(result.voltages), default=default_index))
+"""
 
 # ╔═╡ c4876d26-e841-4e28-8303-131d4635fc23
-#=╠═╡
 md"""
 Potential at the working electrode 
 $(vshow = result.voltages[vindex]; @sprintf("%+1.4f", vshow))
 """
-  ╠═╡ =#
-
-# ╔═╡ 3bcb8261-5b98-4f4d-a9fe-fb71d5c5b476
-#=╠═╡
-md"""
-$(@bind vindex PlutoUI.Slider(1:5:length(result.voltages), default=default_index))
-"""
-  ╠═╡ =#
-
-# ╔═╡ 5dd1a1e6-7db1-479e-a684-accec53ce06a
-#=╠═╡
-plot1d(result, celldata, vshow)
-  ╠═╡ =#
-
-# ╔═╡ 15fadfc2-3cf8-4fda-9aed-a79c602b1d51
-#=╠═╡
-plot1d(result, celldata)
-  ╠═╡ =#
 
 # ╔═╡ c1d2305e-fb8b-4845-a414-08fff84aa9b0
 md"""
@@ -684,6 +695,12 @@ begin
 	end
 end
 
+# ╔═╡ 5dd1a1e6-7db1-479e-a684-accec53ce06a
+plot1d(result, celldata, vshow)
+
+# ╔═╡ 15fadfc2-3cf8-4fda-9aed-a79c602b1d51
+plot1d(result, celldata)
+
 # ╔═╡ d5ab1a28-3a60-49d9-bb3e-ca589b1c79fd
 begin
 	curr(J, ix) = [F * j[ix] for j in J]
@@ -722,6 +739,9 @@ begin
 	    reveal(vis)
 	end
 end
+
+# ╔═╡ edc544ce-de0d-4e37-86c2-7eebd84c2c7e
+curr(result.j_we, iohminus)
 
 # ╔═╡ 95203735-9862-406b-b6a1-79f2e8824204
 # ╠═╡ disabled = true
@@ -855,10 +875,12 @@ HypertextLiteral = "ac1192a8-f4b3-4bfe-ba22-af5b92cd3ab2"
 Latexify = "23fbe1c1-3f47-55db-b15f-69d7ec21a316"
 LessUnitful = "f29f6376-6e90-4d80-80c9-fb8ec61203d5"
 LiquidElectrolytes = "5a7dfd8c-b3af-4c8d-a082-d3a774d75e72"
+MethodAnalysis = "85b6ec6f-f7df-4429-9514-a64bcd9ee824"
 ModelingToolkit = "961ee093-0014-501f-94e3-6117800e7a78"
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 PreallocationTools = "d236fae5-4411-538c-8e31-a6e3d9e00b46"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
 VoronoiFVM = "82b139dc-5afc-11e9-35da-9b9bdfd336f3"
 
@@ -871,6 +893,7 @@ HypertextLiteral = "~0.9.4"
 Latexify = "~0.16.1"
 LessUnitful = "~0.6.1"
 LiquidElectrolytes = "~0.2.1"
+MethodAnalysis = "~0.4.13"
 ModelingToolkit = "~8.65.0"
 PlutoUI = "~0.7.52"
 PreallocationTools = "~0.4.12"
@@ -884,7 +907,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.10.0-beta1"
 manifest_format = "2.0"
-project_hash = "6c27ac2070a5a51d45420311c20d33571465da83"
+project_hash = "73e6f199b1b5474638df304ca68471836d50c171"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "a4c8e0f8c09d4aa708289c1a5fc23e2d1970017a"
@@ -1816,6 +1839,12 @@ git-tree-sha1 = "51d946d38d62709d6a2d37ea9bcc30c80c686801"
 uuid = "eff96d63-e80a-5855-80a2-b1b0885c5ab7"
 version = "2.9.0"
 
+[[deps.MethodAnalysis]]
+deps = ["AbstractTrees"]
+git-tree-sha1 = "c2ee9b8f036c951f9ed0a47503a7f7dc0905b256"
+uuid = "85b6ec6f-f7df-4429-9514-a64bcd9ee824"
+version = "0.4.13"
+
 [[deps.Missings]]
 deps = ["DataAPI"]
 git-tree-sha1 = "f66bdc5de519e8f8ae43bdc598782d35a25b1272"
@@ -2572,6 +2601,7 @@ version = "17.4.0+0"
 # ╔═╡ Cell order:
 # ╠═7d4c7695-1b96-419c-aa77-35bb14730cb4
 # ╠═91ac9e35-71eb-4570-bef7-f63c67ce3881
+# ╠═7708e4a0-1751-4614-9c47-bd997c3cd765
 # ╟─beae1479-1c0f-4a55-86e1-ad2b50174c83
 # ╟─ab2184fc-0279-46d9-9ee4-88fe3e732789
 # ╠═7316901c-d85d-48e9-87dc-3614ab3d81a5
@@ -2592,6 +2622,7 @@ version = "17.4.0+0"
 # ╟─8912f990-6b02-467a-bd11-92f94818b1c7
 # ╟─a8157cc1-1761-4b11-a37c-9e12a9ca695e
 # ╠═6b5cf93c-0df3-4a18-8786-502361736838
+# ╠═1d2d924a-ba62-4aa6-ad94-b7512738658e
 # ╟─d2c0642d-dfa5-4a76-bd36-ac4a735a3299
 # ╟─06d45088-ab8b-4e5d-931d-b58701bf8464
 # ╠═91113083-d80e-4528-be41-82d10f6860fc
@@ -2613,6 +2644,7 @@ version = "17.4.0+0"
 # ╠═3bcb8261-5b98-4f4d-a9fe-fb71d5c5b476
 # ╠═5dd1a1e6-7db1-479e-a684-accec53ce06a
 # ╠═15fadfc2-3cf8-4fda-9aed-a79c602b1d51
+# ╠═edc544ce-de0d-4e37-86c2-7eebd84c2c7e
 # ╟─c1d2305e-fb8b-4845-a414-08fff84aa9b0
 # ╠═2ce5aa45-4aa5-4c2a-a608-f581266e55f0
 # ╠═d5ab1a28-3a60-49d9-bb3e-ca589b1c79fd

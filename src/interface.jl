@@ -303,6 +303,7 @@ end
 #   3c. if type == tstate, then do same as for adsorbate
 #   3d. if type == fictious, then ...
 function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_table, surface_name)
+    @local_unitfactors μA cm
     # collect all species in a set
     species = Set{String}()
     for (; educts, products, tstate) in reactions
@@ -330,7 +331,7 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
             species_name                        = match_adsorbate[:species_name]
             site                                = match_adsorbate[:site]
             (; sigma_params)                    = findspecies(species_name, site, species_defs)
-            sigma_params                        = (; a = sigma_params[1], b = sigma_params[2])
+            sigma_params                        = (; a = sigma_params[2] / (μA/cm^2), b = sigma_params[1] / (μA/cm^2)^2)
             coverage                            = 0.0
             (; site_names)                      = findspecies("", site, species_defs)
             site_name                           = site_names[1]
