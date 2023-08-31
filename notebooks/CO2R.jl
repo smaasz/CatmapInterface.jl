@@ -223,7 +223,12 @@ begin
 			γ[[ico2, iohminus, ihco3, ico3, ihplus]],
 			nothing
 		)
-		@views f[[ico2, iohminus, ihco3, ico3, ihplus]] .*= -1.0
+		#@views f[[ico2, iohminus, ihco3, ico3, ihplus]] .*= -1.0
+		f[ico2] *= -1.0
+		f[iohminus] *= -1.0
+		f[ihco3] *= -1.0
+		f[ico3] *= -1.0
+		f[ihplus] *= -1.0
 		nothing
 	end
 end;
@@ -331,8 +336,13 @@ begin
 			ps,
 			nothing
 		)
-		@views f[[ico2, ico2_t, icooh_t, iohminus, ico_t, ico]] .*= -1
-		@views f[[ico2, iohminus, ico]] .*= S
+		for ia in [ico2, ico2_t, icooh_t, iohminus, ico_t, ico]
+			f[ia] *= -1
+		end
+		#@views f[[ico2, iohminus, ico]] .*= S
+		f[ico2] *= S
+		f[iohminus] *= S
+		f[ico] *= S
 	end
 end
 
@@ -589,7 +599,7 @@ begin
 	                         xlabel = "Φ_WE/(V vs. SHE)",
 	                         ylabel = "I/(mA/cm²)",
 	                         legend = :lb,
-							 #yscale = :log,
+							 yscale = :log,
 		)
 							 
 	    scalarplot!(vis,
@@ -3245,14 +3255,14 @@ version = "3.5.0+0"
 # ╠═84d1270b-8df5-4d5d-a153-da4ffdb1d283
 # ╠═11b12556-5b61-42c2-a911-4ea98a0a1e85
 # ╟─114d2324-5289-4e44-8d77-736a9bdec365
-# ╠═659091d3-60b2-4158-80e2-cd28a492e870
+# ╟─659091d3-60b2-4158-80e2-cd28a492e870
 # ╟─c4876d26-e841-4e28-8303-131d4635fc23
 # ╟─3bcb8261-5b98-4f4d-a9fe-fb71d5c5b476
 # ╠═5dd1a1e6-7db1-479e-a684-accec53ce06a
 # ╠═15fadfc2-3cf8-4fda-9aed-a79c602b1d51
 # ╠═1cd669ac-05eb-48b2-b457-8c395cd5807d
 # ╟─c1d2305e-fb8b-4845-a414-08fff84aa9b0
-# ╠═2ce5aa45-4aa5-4c2a-a608-f581266e55f0
+# ╟─2ce5aa45-4aa5-4c2a-a608-f581266e55f0
 # ╟─d5ab1a28-3a60-49d9-bb3e-ca589b1c79fd
 # ╟─d0985ca6-fef5-4b67-9ad6-f51d84b595b4
 # ╟─8ae53b8a-0fb3-4c1c-8e5f-a3782a85141c

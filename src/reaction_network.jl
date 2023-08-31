@@ -1,6 +1,15 @@
-function rateconstants(prefactor, Gf_IS, Gf_TS, T, actionprod)
+"""
+    ratelaw_TS(prefactor, Gf_IS, Gf_TS, T, activprod)
+
+Computes the rate of an elementary reaction that passes through a transition state.
+
+The rate law is based on the Arrhenius relation.
+The change in Gibbs free energy between the initial and transition state is the needed activation energy.
+A `prefactor` and the product of the activities `activprod` complete the rate law.
+"""
+function ratelaw_TS(prefactor, Gf_IS, Gf_TS, T, activprod)
     @local_phconstants k_B
-    prefactor * exp(-(Gf_TS - Gf_IS) / (k_B * T)) * actionprod
+    prefactor * exp(-(Gf_TS - Gf_IS) / (k_B * T)) * activprod
 end
 
 function compute_free_energies!(free_energies, catmap_params::CatmapParams, σ, ϕ_we, ϕ, local_pH)
@@ -94,8 +103,8 @@ function create_reaction_network(catmap_params::CatmapParams)
             Gf_FS += factor * free_energies[product]
         end
         Gf_TS = isnothing(tstate) ? max(Gf_IS, Gf_FS) : free_energies[tstate.symbol]
-        rxn_f = Reaction(rateconstants(prefactor, Gf_IS, Gf_TS, T, af), es, ps, αs, βs; only_use_rate=true)
-        rxn_r = Reaction(rateconstants(prefactor, Gf_FS, Gf_TS, T, ar), ps, es, βs, αs; only_use_rate=true)
+        rxn_f = Reaction(ratelaw_TS(prefactor, Gf_IS, Gf_TS, T, af), es, ps, αs, βs; only_use_rate=true)
+        rxn_r = Reaction(ratelaw_TS(prefactor, Gf_FS, Gf_TS, T, ar), ps, es, βs, αs; only_use_rate=true)
         push!(rxs, rxn_f)
         push!(rxs, rxn_r)
     end
