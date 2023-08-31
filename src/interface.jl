@@ -82,7 +82,7 @@ end
 #TStateSpecies(; formation_energy, coverage, site, surface_name, frequencies, sigma_params::Vector{Float64}) = TStateSpecies(; formation_energy, coverage, site, surface_name, frequencies, sigma_params=(; a=sigma_params[1], b=sigma_params[2]))
 
 struct SiteSpecies <: AbstractSpecies
-    energy::Float64
+    formation_energy::Float64
     site_name::String
 end
 
@@ -355,7 +355,7 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
             species_name                        = match_tstate[:species_name]
             site                                = match_tstate[:site]
             (; sigma_params)                    = findspecies(species_name, site, species_defs)
-            sigma_params                        = (; a = sigma_params[1], b = sigma_params[2])
+            sigma_params                        = (; a = sigma_params[2] / (μA/cm^2), b = sigma_params[1] / (μA/cm^2)^2)
             coverage                            = 0.0
             (; site_names)                      = findspecies("", site, species_defs)
             site_name                           = site_names[1]

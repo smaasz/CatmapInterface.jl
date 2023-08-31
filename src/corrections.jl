@@ -31,7 +31,11 @@ function harmonic_adsorbate(energies, catmap_params::CatmapParams)
         if isa(sp, TStateSpecies)
             (; between_species) = sp
             for bs in between_species
-                energies[s] += 0.5 * energies[bs]
+                if isa(species_list[bs], AdsorbateSpecies)
+                    (; formation_energy) = species_list[bs]
+                    thermo_correction = energies[bs] - formation_energy
+                    energies[s] += 0.5 * thermo_correction
+                end
             end
         end
     end
@@ -61,7 +65,7 @@ function hbond_surface_charge_density(energies, catmap_params::CatmapParams, σ,
     end
     # hbond_surface_charge_density
     for (s, sp) in species_list
-        if isa(sp, AdsorbateSpecies) || isa(sp, TStateSpecies)
+        if (isa(sp, AdsorbateSpecies) || isa(sp, TStateSpecies))
             (; a, b) = sp.sigma_params
             energies[s] += (a * σ + b * σ^2) * eV
         end

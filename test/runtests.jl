@@ -1,5 +1,5 @@
-using Test
 using CatmapInterface
+using Test
 using Catalyst
 using DelimitedFiles
 
@@ -27,16 +27,21 @@ function instantiate_catmap_template(template_file_path, σ, ϕ_we, ϕ, local_pH
     return input_instance_file_name
 end
 
-function isapprox_catmap_output(catmap_output_path; rtol=1.0e-5)
+function compare_catmap_output(catmap_output_path; rtol=1.0e-5)
     (dc, dh) = readdlm(catmap_output_path, ',', Float64; header=true)
     
-    function isapprox_catmap_output_row(row)
+    function findparams(row)
         ϕ_we        = row[findfirst(isequal("ϕ_we"), dh[1,:])]
         ϕ           = row[findfirst(isequal("ϕ"), dh[1,:])]
         ϕ_pzc       = row[findfirst(isequal("ϕ_pzc"), dh[1,:])]
         local_pH    = row[findfirst(isequal("local_pH"), dh[1,:])]
         T           = row[findfirst(isequal("T"), dh[1,:])]
         σ           = row[findfirst(isequal("σ"), dh[1,:])]
+        (; ϕ_we, ϕ, ϕ_pzc, local_pH, T, σ)
+    end
+
+    function test_catmap_output(row)
+        (; ϕ_we, ϕ, ϕ_pzc, local_pH, T, σ) = findparams(row)
 
         input_instance_file = instantiate_catmap_template("catmap_CO2R_template.mkm", σ, ϕ_we, ϕ, local_pH; ϕ_pzc, T)
         catmap_params       = parse_catmap_input(input_instance_file)
@@ -45,16 +50,17 @@ function isapprox_catmap_output(catmap_output_path; rtol=1.0e-5)
         free_energies = Dict(zip(keys(catmap_params.species_list), fill(0.0, length(catmap_params.species_list))))
         CatmapInterface.compute_free_energies!(free_energies, catmap_params, σ, ϕ_we, ϕ, local_pH)
 
-        all(map(collect(keys(free_energies))) do s
+        @testset "species=$s" for s in collect(keys(free_energies))
             catmap_output = 0.0
             ss = startswith(s, "_") ? s[2:end] : s
             catmap_output = row[findfirst(isequal(ss), dh[1,:])]
-            @show s, catmap_output, free_energies[s] / eV
-            isapprox(catmap_output, free_energies[s] / eV; rtol)
-        end)
+            @test isapprox(catmap_output, free_energies[s] / eV; rtol)
+        end
     end
 
-    all(map(isapprox_catmap_output_row, eachrow(dc)))
+    @testset "$(findparams(row))" for row in eachrow(dc)
+        test_catmap_output(row)
+    end
 end
 
 catmap_params   = parse_catmap_input("catmap_CO2R_template.mkm")
@@ -63,7 +69,7 @@ rn              = create_reaction_network(catmap_params)
 @testset "CatmapInterface.jl" begin
     @test numreactions(rn) == 2*4
     @test numspecies(rn) == 6
-    @test isapprox_catmap_output("./catmap_data.csv")
+    compare_catmap_output("./catmap_data.csv")
 end
 
 

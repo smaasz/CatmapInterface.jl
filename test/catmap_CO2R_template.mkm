@@ -7,9 +7,9 @@ rxn_expressions = [
     #'CO*_t <-> CO_g + *_t',
     #'H2_g <-> H2_g',
     #'CO2_g + 2*_t <-> CO2-*_t <-> CO2*_t',	                  #1
-    'CO2_g + *_t <-> CO2*_t',	                  #1
+    'CO2_g + 2*_t <-> CO2*_t',	                  #1
     'CO2*_t + H2O_g + ele_g <-> COOH*_t + OH_g',  #2
-    'COOH*_t + H2O_g + ele_g <-> COOH-H2O-ele_t <-> CO*_t + H2O_g + OH_g; beta=0.59', #3
+    'COOH*_t + H2O_g + ele_g <-> COOH-H2O-ele_t <-> CO*_t + H2O_g + OH_g + *_t; beta=0.5', #3
     'CO*_t <-> CO_g + *_t',	                      #4
     #'H2_g <-> H2_g',                              #5
     #'H2O_g + ele_g <-> OH_g + H_g' #5?

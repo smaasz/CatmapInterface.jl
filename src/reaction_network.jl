@@ -6,6 +6,10 @@ end
 function compute_free_energies!(free_energies, catmap_params::CatmapParams, σ, ϕ_we, ϕ, local_pH)
     (; gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode) = catmap_params
 
+    for (s, (; formation_energy)) in catmap_params.species_list
+        free_energies[s] += formation_energy
+    end
+
     gas_thermo_correction!             = getfield(@__MODULE__, gas_thermo_mode)
     adsorbate_thermo_correction!       = getfield(@__MODULE__, adsorbate_thermo_mode)
     electrochemical_thermo_correction! = getfield(@__MODULE__, electrochemical_thermo_mode)
