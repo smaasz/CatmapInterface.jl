@@ -1,5 +1,6 @@
-function ideal_gas(energies, species_list, T)
+function ideal_gas(energies, catmap_params::CatmapParams)
     @local_unitfactors eV
+    (; species_list, T) = catmap_params
     for (s, sp) in species_list
         if isa(sp, GasSpecies)
             (; species_name, frequencies) = sp
@@ -17,8 +18,9 @@ function ideal_gas(energies, species_list, T)
     end
 end
 
-function harmonic_adsorbate(energies, species_list, T)
+function harmonic_adsorbate(energies, catmap_params::CatmapParams)
     @local_unitfactors eV
+    (; species_list, T) = catmap_params
     for (s, sp) in species_list
         if isa(sp, AdsorbateSpecies)
             (; frequencies) = sp
@@ -35,8 +37,9 @@ function harmonic_adsorbate(energies, species_list, T)
     end
 end
 
-function hbond_surface_charge_density(energies, species_list, σ, ϕ_we, ϕ, ϕ_pzc, local_pH, T; potential_reference_scale)
+function hbond_surface_charge_density(energies, catmap_params::CatmapParams, σ, ϕ_we, ϕ, local_pH)
     @local_unitfactors eV
+    (; species_list, T, Upzc, potential_reference_scale) = catmap_params
     # simple_electrochem_corrections
     if haskey(energies, "ele_g")
         energies["ele_g"] += -(ϕ_we - ϕ) * eV
@@ -44,7 +47,7 @@ function hbond_surface_charge_density(energies, species_list, σ, ϕ_we, ϕ, ϕ_
     for (s, sp) in species_list
         if isa(sp, TStateSpecies)
             (; β) = sp
-            energies[s] += (-(ϕ_we - ϕ) + β * (ϕ_we - ϕ - ϕ_pzc)) * eV
+            energies[s] += (-(ϕ_we - ϕ) + β * (ϕ_we - ϕ - Upzc)) * eV
         end
     end
     # hbond_electrochemical

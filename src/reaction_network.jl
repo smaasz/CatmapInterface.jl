@@ -3,21 +3,27 @@ function rateconstants(prefactor, Gf_IS, Gf_TS, T, actionprod)
     prefactor * exp(-(Gf_TS - Gf_IS) / (k_B * T)) * actionprod
 end
 
-function create_reaction_network(catmap_params::CatmapParams)
-    (; species_list, T, potential_reference_scale, Upzc) = catmap_params
+function compute_free_energies!(free_energies, catmap_params::CatmapParams, σ, ϕ_we, ϕ, local_pH)
+    (; gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode) = catmap_params
 
-    gas_thermo_correction!             = getfield(@__MODULE__, catmap_params.gas_thermo_mode)
-    adsorbate_thermo_correction!       = getfield(@__MODULE__, catmap_params.adsorbate_thermo_mode)
-    electrochemical_thermo_correction! = getfield(@__MODULE__, catmap_params.electrochemical_thermo_mode)
+    gas_thermo_correction!             = getfield(@__MODULE__, gas_thermo_mode)
+    adsorbate_thermo_correction!       = getfield(@__MODULE__, adsorbate_thermo_mode)
+    electrochemical_thermo_correction! = getfield(@__MODULE__, electrochemical_thermo_mode)
 
-    free_energies = Dict(zip(keys(species_list), fill(Num(0.0), length(species_list))))
-    # thermo corrections
-    gas_thermo_correction!(free_energies, species_list, T)
-    adsorbate_thermo_correction!(free_energies, species_list, T)
+    gas_thermo_correction!(free_energies, catmap_params)
+    adsorbate_thermo_correction!(free_energies, catmap_params)
 
-    @parameters σ ϕ_we ϕ local_pH a[1:length(species_list)]
     # electrochemical corrections
-    electrochemical_thermo_correction!(free_energies, species_list, σ, ϕ_we, ϕ, Upzc, local_pH, T; potential_reference_scale)
+    electrochemical_thermo_correction!(free_energies, catmap_params, σ, ϕ_we, ϕ, local_pH)
+    nothing
+end
+
+function create_reaction_network(catmap_params::CatmapParams)
+    (; species_list, T) = catmap_params
+
+    @parameters σ ϕ_we ϕ local_pH
+    free_energies = Dict(zip(keys(species_list), fill(Num(0.0), length(species_list))))
+    compute_free_energies!(free_energies, catmap_params::CatmapParams, σ, ϕ_we, ϕ, local_pH)
 
     @variables t
     vars        = Dict{String, Num}()
