@@ -89,9 +89,9 @@ begin
     const ihco3 	= 2
     const ico3 		= 3
     const ico2 		= 4
-    const ico  		= 5
-    const iohminus 	= 6
-    const ihplus 	= 7
+    const iohminus 	= 5
+    const ihplus 	= 6
+	const ico  		= 7
 	const nc 		= 7
 	## reaction rate constants for bulk reactions
 	### CO2 + OH- <=> HCO3-
@@ -114,6 +114,7 @@ begin
     const kwe  = 1.0e-14 * (mol/dm^3)^2
     const kwf  = 2.4e-5 * (mol/dm^3) / s
     const kwr  = kwf / kwe
+	const aH₂O = 1.0 #* mol/dm^3
 	
 	const scheme 	= :μex
 
@@ -131,10 +132,10 @@ end;
 
 # ╔═╡ 88836b47-125e-44ae-a2d9-f83272eba33e
 const bulk = DataFrame(
-  :name => [      "K⁺", "HCO₃⁻", "CO₃²⁻",  "CO₂",   "CO",     "OH⁻",    "H⁺"],
-  :z 	=> [         1,      -1,      -2,      0,      0,        -1,       1],
-  :D 	=> [  1.957e-9,1.185e-9,0.923e-9,1.91e-9,2.23e-9,  5.273e-9,9.310e-9] * m^2/s,
-  :c_bulk=>[0.09105350460641519,0.091,2.68e-5,0.033,0.0,10^(pH-14),10^(-pH)]*mol/dm^3,
+  :name => [      "K⁺", "HCO₃⁻", "CO₃²⁻",  "CO₂",     "OH⁻",    "H⁺",   "CO"],
+  :z 	=> [         1,      -1,      -2,      0,        -1,       1,      0],
+  :D 	=> [  1.957e-9,1.185e-9,0.923e-9,1.91e-9, 5.273e-9,9.310e-9,2.23e-9] * m^2/s,
+  :c_bulk=>[0.09105350460641519,0.091,2.68e-5,0.033,10^(pH-14),10^(-pH),0.0]*mol/dm^3,
   :κ    => [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
   :a    => [8.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] * Å,
   :v    => [N_A * (8.2 * Å)^3, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
@@ -169,27 +170,29 @@ md"""
 
 # ╔═╡ d8f00649-e2ed-4bdd-853f-05268f0d5353
 md"""
-Consider the bicarbonate buffer system in base:
-
-$CO_2 + OH^- \rightleftharpoons HCO_3^-$
-
-$HCO_3^- + OH^- \rightleftharpoons CO_3^{2-} + H_2O$
-
-and acid:
-
-$CO_2 + H_2O \rightleftharpoons HCO_3^- + H^+$
-
-$HCO_3^- \rightleftharpoons CO_3^{2-} + H^+$
-
-Moreover, the autoprotolysis of water is considered:
-
-$H_2O \rightleftharpoons H^+ + OH^-$
-
+Consider the bicarbonate buffer system in base and acid as well as autoprotolysis of water:
 """
+
+# ╔═╡ 47b36c81-b57e-4dd0-a22f-999e4fd3ac9f
+begin
+	#@species HCO₃⁻, CO₃²⁻, CO₂, OH⁻,H⁺
+	buffer_rn = @reaction_network buffer begin
+		($kbf1 * γCO₂ * γOH⁻, $kbr1 * γHCO₃⁻), CO₂ + OH⁻ <--> HCO₃⁻
+		($kbf2 * γHCO₃⁻ * γOH⁻, $kbr2 * $aH₂O * γCO₃²⁻), HCO₃⁻ + OH⁻ <--> CO₃²⁻
+		($kaf1 * $aH₂O * γCO₂, $kar1 * γHCO₃⁻ * γH⁺), CO₂ <--> HCO₃⁻ + H⁺
+		($kaf2 * γHCO₃⁻, $kar2 * γCO₃²⁻ * γH⁺), HCO₃⁻ <--> CO₃²⁻ + H⁺
+		($kwf * $aH₂O, $kwr * γH⁺ * γOH⁻), ∅ <--> H⁺ + OH⁻
+	end
+	odesys_buffer = convert(ODESystem, buffer_rn; combinatoric_ratelaws=false)
+	#dvs=[HCO₃⁻, CO₃²⁻, CO₂, OH⁻,H⁺]
+	f_buffer! = ODEFunction(odesys_buffer).f.f_iip
+	@show species(buffer_rn), Catalyst.parameters(buffer_rn)
+	latexify(buffer_rn)
+end
 
 # ╔═╡ 8a1047fa-e483-40d9-8904-7576f30acfb4
 begin
-	const rates_cache_buffer = DiffCache(zeros(5), 12)
+	#const rates_cache_buffer = DiffCache(zeros(5), 12)
 	const γ_cache = DiffCache(zeros(nc), 12)
 	
 	function reaction(
@@ -202,12 +205,10 @@ begin
 		(; ip, iϕ, v0, v, M0, M, κ, ε_0, ε, RT, nc, pscale, p_bulk) = data
 		p = u[ip] * pscale-p_bulk
 
-    	@views c0, bar_c = c0_barc(u[:], data)
+    	@views c0, bar_c = c0_barc(u[1:7], data)
 
-		## Calculate the  activity coefficients first,
-		## as these expressions are less degenerating.
 		γ = get_tmp(γ_cache, u[ico2])
-		γ .= 1.0
+		γ .= 1.0/(1-v[ikplus]*u[ikplus]/(mol/dm^3))
 		# for ic in 1:nc
 		# 	Mrel = M[ic] / M0
 		# 	barv = v[ic] + κ[ic] * v0
@@ -215,35 +216,14 @@ begin
 		#  	γ[ic] = exp(tildev * p / (RT)) * (bar_c / c0)^Mrel*(1/bar_c)
 		# end
 		
-		# buffer reactions
-		# !!! Note: use PreallocationTools.jl to make non-allocating
-		#rates       = zeros(Tv, 5) 
-		rates = get_tmp(rates_cache_buffer, u[ico2])
-		## in base
-		## CO2 + OH- <=> HCO3-
-		rates[1]    = kbf1 * (γ[ico2] * u[ico2]) * (γ[iohminus] * u[iohminus])
-		rates[1]   -= kbr1 * (γ[ihco3] * u[ihco3])  
-		## HCO3- + OH- <=> CO3-- + H2O
-		rates[2]    = kbf2 * (γ[ihco3] * u[ihco3]) * (γ[iohminus] * u[iohminus]) 
-		rates[2]   -= kbr2 * (γ[ico3] * u[ico3]) #* mol/dm^3
 		
-		## in acid
-		## CO2 + H20 <=> HCO3- + H+
-		rates[3]    = kaf1 * (γ[ico2] * u[ico2]) #* mol/dm^3
-		rates[3]   -= kar1 * (γ[ihco3] * u[ihco3]) * (γ[ihplus] * u[ihplus])
-					
-		## HCO3- <=> CO3-- + H+ 
-		rates[4]    = kaf2 * (γ[ihco3] * u[ihco3]) 
-		rates[4]   -= kar2 * (γ[ihco3] * u[ico3]) * (γ[ihplus] * u[ihplus]) 
-		
-		## autoprotolyse
-		rates[5]    = kwf #* mol/dm^3
-		rates[5]   -= kwr * (γ[ihplus] * u[ihplus]) * (γ[iohminus] * u[iohminus])  
-		
-		f[ihco3] 	-= rates[1] - rates[2] + rates[3] - rates[4]
-		f[ico3] 	-= rates[2] + rates[4]
-		f[ihplus]   -= rates[3] + rates[4] + rates[5]
-		f[iohminus] -= -rates[1] -rates[2] + rates[5]
+		@views f_buffer!(
+			f[[ico2, iohminus, ihco3, ico3, ihplus]], 
+			u[[ico2, iohminus, ihco3, ico3, ihplus]],
+			γ[[ico2, iohminus, ihco3, ico3, ihplus]],
+			nothing
+		)
+		@views f[[ico2, iohminus, ihco3, ico3, ihplus]] .*= -1.0
 		nothing
 	end
 end;
@@ -275,10 +255,10 @@ $*CO_{(ad)} \rightleftharpoons CO_{(aq)} + *$
 
 # ╔═╡ 6b5cf93c-0df3-4a18-8786-502361736838
 begin
-	catmap_params 	= parse_catmap_input("../test/catmap_CO2R_template.mkm")
-	rn 				= create_reaction_network(catmap_params)
-	odesys 			= convert(ODESystem, rn; combinatoric_ratelaws=false)
-	mk_f! 	= ODEFunction(odesys).f.f_iip
+	catmap_params 		= parse_catmap_input("../test/catmap_CO2R_template.mkm")
+	rn 					= create_reaction_network(catmap_params)
+	odesys 				= convert(ODESystem, rn; combinatoric_ratelaws=false)
+	f_microkinetics! 	= ODEFunction(odesys).f.f_iip
 	@show states(odesys), Catalyst.parameters(odesys)
 	latexify(odesys)
 end
@@ -315,40 +295,37 @@ begin
 		(; ip, iϕ, v0, v, M0, M, κ, RT, nc, pscale, p_bulk, ϕ_we) = data
 		p = u[ip] * pscale-p_bulk
 
-		@views c0, bar_c = c0_barc(u[:], data)
+		@views c0, bar_c = c0_barc(u[1:7], data)
 
-		## Calculate the  activity coefficients first,
-		## as these expressions are less degenerating.
-		γ_co2 = let 
-			Mrel = M[ico2] / M0
-			barv=v[ico2] + κ[ico2]*v0
-			tildev=barv - Mrel*v0
-			exp(tildev * p / (RT)) * (bar_c / c0)^Mrel*(1/bar_c) /Hcp_CO2/bar
-		end
+		# γ_co2 = let 
+		# 	Mrel = M[ico2] / M0
+		# 	barv=v[ico2] + κ[ico2]*v0
+		# 	tildev=barv - Mrel*v0
+		# 	exp(tildev * p / (RT)) * (bar_c / c0)^Mrel*(1/bar_c) /Hcp_CO2/bar
+		# end
 
-		γ_co = let
-			Mrel = M[ico] / M0
-			barv=v[ico] + κ[ico]*v0
-			tildev=barv - Mrel*v0
-			exp(tildev * p / (RT)) * (bar_c / c0)^Mrel*(1/bar_c) /Hcp_CO/bar
-		end
+		# γ_co = let
+		# 	Mrel = M[ico] / M0
+		# 	barv=v[ico] + κ[ico]*v0
+		# 	tildev=barv - Mrel*v0
+		# 	exp(tildev * p / (RT)) * (bar_c / c0)^Mrel*(1/bar_c) /Hcp_CO/bar
+		# end
 	
 		σ 			= C_gap * (ϕ_we - u[iϕ] - ϕ_pzc)
 		a_t 		= 1 - u[ico2_t] - u[ico_t] - u[icooh_t]
-		a_H2O 		= 1.0
 		local_pH 	= -log10(u[ihplus] / (mol/dm^3))
 		
 		ps 	  = get_tmp(ps_cache, u[iϕ])
-		ps[1] = a_t
-		ps[2] = γ_co2
+		ps[1] = 1.0/(1-v[ikplus]*u[ikplus]/(mol/dm^3))#γ_co2
+		ps[2] = a_t
 		ps[3] = σ
-		ps[4] = a_H2O
+		ps[4] = aH₂O
 		ps[5] = u[iϕ]
 		ps[6] = ϕ_we
 		ps[7] = local_pH
-		ps[8] = γ_co
+		ps[8] = 1.0/(1-v[ikplus]*u[ikplus]/(mol/dm^3)) #γ_co
 	
-		@views mk_f!(
+		@views f_microkinetics!(
 			f[[ico2, ico2_t, icooh_t, iohminus, ico_t, ico]], 
 			u[[ico2, ico2_t, icooh_t, iohminus, ico_t, ico]],
 			ps,
@@ -407,7 +384,9 @@ celldata = ElectrolyteData(;nc    = nc,
 							M     = bulk[!, :M],
 						  	Γ_we  = Γ_we,
 						  	Γ_bulk= Γ_bulk,
-						  	scheme= scheme,);
+						  	scheme= scheme,
+							#pscale= 1.0
+);
 
 # ╔═╡ dc203e95-7763-4b13-8408-038b933c5c9c
 function halfcellbc(
@@ -475,7 +454,7 @@ md"""
 begin
 	function addplot(vis, sol, vshow)
 		species = bulk.name
-		colors = [:orange, :brown, :violet, :red, :blue, :green, :gray]
+		colors = [:orange, :brown, :violet, :red, :green, :gray, :blue]
 		
 		scale = 1.0 / (mol / dm^3)
 	    title = @sprintf("Φ_we=%+1.2f [V vs. SHE]", vshow)
@@ -526,8 +505,8 @@ begin
 		if useonly_pH
 			scalarplot!(vis, 
 					    knots, 
-					    log10.(sol[7].(knots)), 
-					    color = colors[7],
+					    log10.(sol[ihplus].(knots)), 
+					    color = colors[ihplus],
 					    clear = false,
 						linewidth = 0,
 						label = "",
@@ -610,7 +589,7 @@ begin
 	                         xlabel = "Φ_WE/(V vs. SHE)",
 	                         ylabel = "I/(mA/cm²)",
 	                         legend = :lb,
-							 yscale = :log,
+							 #yscale = :log,
 		)
 							 
 	    scalarplot!(vis,
@@ -3240,12 +3219,13 @@ version = "3.5.0+0"
 # ╠═7316901c-d85d-48e9-87dc-3614ab3d81a5
 # ╟─6b7cfe87-8190-40a5-8d25-e39ef8d55db5
 # ╠═5a146a44-03dc-45f3-ae15-993d11c2edac
-# ╟─88836b47-125e-44ae-a2d9-f83272eba33e
+# ╠═88836b47-125e-44ae-a2d9-f83272eba33e
 # ╟─ca22e3fe-5cb7-4910-b9fa-890fd2d20e4b
 # ╟─4c95d645-f909-492b-a425-927c093ae31a
 # ╟─4b64e168-5fe9-4202-9657-0d4afc237ddc
 # ╟─de2c826d-6c05-47cf-b5f5-44a00ea9889c
 # ╟─d8f00649-e2ed-4bdd-853f-05268f0d5353
+# ╠═47b36c81-b57e-4dd0-a22f-999e4fd3ac9f
 # ╠═8a1047fa-e483-40d9-8904-7576f30acfb4
 # ╟─8912f990-6b02-467a-bd11-92f94818b1c7
 # ╟─a8157cc1-1761-4b11-a37c-9e12a9ca695e
@@ -3272,7 +3252,7 @@ version = "3.5.0+0"
 # ╠═15fadfc2-3cf8-4fda-9aed-a79c602b1d51
 # ╠═1cd669ac-05eb-48b2-b457-8c395cd5807d
 # ╟─c1d2305e-fb8b-4845-a414-08fff84aa9b0
-# ╟─2ce5aa45-4aa5-4c2a-a608-f581266e55f0
+# ╠═2ce5aa45-4aa5-4c2a-a608-f581266e55f0
 # ╟─d5ab1a28-3a60-49d9-bb3e-ca589b1c79fd
 # ╟─d0985ca6-fef5-4b67-9ad6-f51d84b595b4
 # ╟─8ae53b8a-0fb3-4c1c-8e5f-a3782a85141c
