@@ -32,6 +32,8 @@ using Catalyst
 using ModelingToolkit
 using DelimitedFiles
 using LessUnitful
+using RuntimeGeneratedFunctions
+RuntimeGeneratedFunctions.init(@__MODULE__)
 include("interface.jl")
 export parse_catmap_input
 include("corrections.jl")

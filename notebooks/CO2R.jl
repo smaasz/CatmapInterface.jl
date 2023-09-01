@@ -44,11 +44,6 @@ begin
     end
 end;
 
-# ╔═╡ 7708e4a0-1751-4614-9c47-bd997c3cd765
-begin
-	using MethodAnalysis
-end;
-
 # ╔═╡ beae1479-1c0f-4a55-86e1-ad2b50174c83
 md"""
 ## Setup
@@ -85,12 +80,19 @@ begin
 	const T 		= 298.0 * K
 	const Hcp_CO  	= 9.7e-6 * mol/(m^3 * Pa)
     const Hcp_CO2 	= 3.3e-4 * mol/(m^3 * Pa)
+	# species not involved in reactions
 	const ikplus 	= 1
-    const ihco3 	= 2
-    const ico3 		= 3
-    const ico2 		= 4
-    const iohminus 	= 5
-    const ihplus 	= 6
+	# species involved in buffer reactions but not in surface reactions
+	const ibufferstart = 2
+	const ihplus 	= 2
+	const ihco3 	= 3
+    const ico3 		= 4
+	# species involved in buffer reactions and surface reactions
+    const isurfacestart = 5
+	const ico2 		= 5
+    const iohminus 	= 6
+	const ibufferend = 6
+	# species involved in surface reactions but not in buffer reactions
 	const ico  		= 7
 	const nc 		= 7
 	## reaction rate constants for bulk reactions
@@ -125,25 +127,52 @@ begin
 	const ico_t 	= 8
 	const icooh_t 	= 9
 	const ico2_t 	= 10
+	const isurfaceend = 10
 	const na 		= 3 # CO_t, CO2_t, COOH_t
 	const M0 		= 18.0153 * ufac"g/mol"
 	const v0        = 1 / (55.4 * ufac"M")
+	
+	const species_dict = Dict(
+		"K⁺" => ikplus,
+		"HCO₃⁻" => ihco3,
+		"CO₃²⁻" => ico3,
+		"CO₂" => ico2,
+		"OH⁻" => iohminus, 
+		"H⁺" => ihplus,
+		"CO" => ico,
+		"CO_t" => ico_t,
+		"COOH_t" => icooh_t,
+		"CO2_t" => ico2_t,
+	)
+
+	const species_dict_catmap = Dict(
+		"OH_g" => iohminus,
+		"CO2_g" => ico2,
+		"CO_g" => ico,
+		"CO_t" => ico_t,
+		"COOH_t" => icooh_t,
+		"CO2_t" => ico2_t,
+	)
 end;
 
 # ╔═╡ 88836b47-125e-44ae-a2d9-f83272eba33e
-const bulk = DataFrame(
-  :name => [      "K⁺", "HCO₃⁻", "CO₃²⁻",  "CO₂",     "OH⁻",    "H⁺",   "CO"],
-  :z 	=> [         1,      -1,      -2,      0,        -1,       1,      0],
-  :D 	=> [  1.957e-9,1.185e-9,0.923e-9,1.91e-9, 5.273e-9,9.310e-9,2.23e-9] * m^2/s,
-  :c_bulk=>[0.09105350460641519,0.091,2.68e-5,0.033,10^(pH-14),10^(-pH),0.0]*mol/dm^3,
-  :κ    => [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-  :a    => [8.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] * Å,
-  :v    => [N_A * (8.2 * Å)^3, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-  :M    => [M0 * N_A * (8.2 * Å)^3 / v0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-  # :a    => [       8.2,     8.2,8.2,8.2,8.2,8.2,8.2] * Å,
-  # :v    => [N_A * (8.2 * Å)^3, N_A * (8.2 * Å)^3,N_A * (8.2 * Å)^3,N_A * (8.2 * Å)^3,N_A * (8.2 * Å)^3,N_A * (8.2 * Å)^3,N_A * (8.2 * Å)^3],
-  # :M    => [M0 * N_A * (8.2 * Å)^3 / v0, M0 * N_A * (8.2 * Å)^3 / v0,M0 * N_A * (8.2 * Å)^3 / v0,M0 * N_A * (8.2 * Å)^3 / v0,M0 * N_A * (8.2 * Å)^3 / v0,M0 * N_A * (8.2 * Å)^3 / v0,M0 * N_A * (8.2 * Å)^3 / v0]
-)
+begin
+	const bulk = DataFrame(
+	  :name => [      "K⁺", "HCO₃⁻", "CO₃²⁻",  "CO₂",     "OH⁻",    "H⁺",   "CO"],
+	  :z 	=> [         1,      -1,      -2,      0,        -1,       1,      0],
+	  :D 	=> [  1.957e-9,1.185e-9,0.923e-9,1.91e-9, 5.273e-9,9.310e-9,2.23e-9] * m^2/s,
+	  :c_bulk=>[0.09105350460641519,0.091,2.68e-5,0.033,10^(pH-14),10^(-pH),0.0]*mol/dm^3,
+	  :κ    => [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+	  :a    => [8.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] * Å,
+	  :v    => [N_A * (8.2 * Å)^3, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+	  :M    => [M0 * N_A * (8.2 * Å)^3 / v0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+	  :color=> [:orange, :brown, :violet, :red, :green, :gray, :blue]
+	  # :a    => [       8.2,     8.2,8.2,8.2,8.2,8.2,8.2] * Å,
+	  # :v    => [N_A * (8.2 * Å)^3, N_A * (8.2 * Å)^3,N_A * (8.2 * Å)^3,N_A * (8.2 * Å)^3,N_A * (8.2 * Å)^3,N_A * (8.2 * Å)^3,N_A * (8.2 * Å)^3],
+	  # :M    => [M0 * N_A * (8.2 * Å)^3 / v0, M0 * N_A * (8.2 * Å)^3 / v0,M0 * N_A * (8.2 * Å)^3 / v0,M0 * N_A * (8.2 * Å)^3 / v0,M0 * N_A * (8.2 * Å)^3 / v0,M0 * N_A * (8.2 * Å)^3 / v0,M0 * N_A * (8.2 * Å)^3 / v0]
+	)
+	sort!(bulk, [:name], by=x->species_dict[x])
+end
 
 # ╔═╡ ca22e3fe-5cb7-4910-b9fa-890fd2d20e4b
 md"""
@@ -175,7 +204,9 @@ Consider the bicarbonate buffer system in base and acid as well as autoprotolysi
 
 # ╔═╡ 47b36c81-b57e-4dd0-a22f-999e4fd3ac9f
 begin
-	#@species HCO₃⁻, CO₃²⁻, CO₂, OH⁻,H⁺
+	@variables t
+	@species HCO₃⁻(t), CO₃²⁻(t), CO₂(t), OH⁻(t),H⁺(t)
+	@parameters γHCO₃⁻ γCO₃²⁻ γCO₂ γOH⁻ γH⁺
 	buffer_rn = @reaction_network buffer begin
 		($kbf1 * γCO₂ * γOH⁻, $kbr1 * γHCO₃⁻), CO₂ + OH⁻ <--> HCO₃⁻
 		($kbf2 * γHCO₃⁻ * γOH⁻, $kbr2 * $aH₂O * γCO₃²⁻), HCO₃⁻ + OH⁻ <--> CO₃²⁻
@@ -184,15 +215,16 @@ begin
 		($kwf * $aH₂O, $kwr * γH⁺ * γOH⁻), ∅ <--> H⁺ + OH⁻
 	end
 	odesys_buffer = convert(ODESystem, buffer_rn; combinatoric_ratelaws=false)
-	#dvs=[HCO₃⁻, CO₃²⁻, CO₂, OH⁻,H⁺]
-	f_buffer! = ODEFunction(odesys_buffer).f.f_iip
-	@show species(buffer_rn), Catalyst.parameters(buffer_rn)
+	const f_buffer! = CatmapInterface.generate_function(
+		buffer_rn, 
+		[H⁺, HCO₃⁻, CO₃²⁻, CO₂, OH⁻], 
+		[γH⁺, γHCO₃⁻, γCO₃²⁻, γCO₂, γOH⁻]
+	)
 	latexify(buffer_rn)
 end
 
 # ╔═╡ 8a1047fa-e483-40d9-8904-7576f30acfb4
 begin
-	#const rates_cache_buffer = DiffCache(zeros(5), 12)
 	const γ_cache = DiffCache(zeros(nc), 12)
 	
 	function reaction(
@@ -205,7 +237,7 @@ begin
 		(; ip, iϕ, v0, v, M0, M, κ, ε_0, ε, RT, nc, pscale, p_bulk) = data
 		p = u[ip] * pscale-p_bulk
 
-    	@views c0, bar_c = c0_barc(u[1:7], data)
+    	@views c0, bar_c = c0_barc(u[1:nc], data)
 
 		γ = get_tmp(γ_cache, u[ico2])
 		γ .= 1.0/(1-v[ikplus]*u[ikplus]/(mol/dm^3))
@@ -218,17 +250,11 @@ begin
 		
 		
 		@views f_buffer!(
-			f[[ico2, iohminus, ihco3, ico3, ihplus]], 
-			u[[ico2, iohminus, ihco3, ico3, ihplus]],
-			γ[[ico2, iohminus, ihco3, ico3, ihplus]],
+			f[ibufferstart:ibufferend], 
+			u[ibufferstart:ibufferend],
+			γ[ibufferstart:ibufferend],
 			nothing
 		)
-		#@views f[[ico2, iohminus, ihco3, ico3, ihplus]] .*= -1.0
-		f[ico2] *= -1.0
-		f[iohminus] *= -1.0
-		f[ihco3] *= -1.0
-		f[ico3] *= -1.0
-		f[ihplus] *= -1.0
 		nothing
 	end
 end;
@@ -262,9 +288,14 @@ $*CO_{(ad)} \rightleftharpoons CO_{(aq)} + *$
 begin
 	catmap_params 		= parse_catmap_input("../test/catmap_CO2R_template.mkm")
 	rn 					= create_reaction_network(catmap_params)
+	vars = species(rn)
+	const f_microkinetics! 	= CatmapInterface.generate_function(
+		rn, 
+		sort(vars, by=x->species_dict_catmap[string(operation(x))]), 
+		Catalyst.parameters(rn)
+	)
 	odesys 				= convert(ODESystem, rn; combinatoric_ratelaws=false)
-	f_microkinetics! 	= ODEFunction(odesys).f.f_iip
-	@show states(odesys), Catalyst.parameters(odesys)
+	@show Catalyst.parameters(odesys)
 	latexify(odesys)
 end
 
@@ -300,7 +331,7 @@ begin
 		(; ip, iϕ, v0, v, M0, M, κ, RT, nc, pscale, p_bulk, ϕ_we) = data
 		p = u[ip] * pscale-p_bulk
 
-		@views c0, bar_c = c0_barc(u[1:7], data)
+		@views c0, bar_c = c0_barc(u[1:nc], data)
 
 		# γ_co2 = let 
 		# 	Mrel = M[ico2] / M0
@@ -331,15 +362,11 @@ begin
 		ps[8] = 1.0/(1-v[ikplus]*u[ikplus]/(mol/dm^3)) #γ_co
 	
 		@views f_microkinetics!(
-			f[[ico2, ico2_t, icooh_t, iohminus, ico_t, ico]], 
-			u[[ico2, ico2_t, icooh_t, iohminus, ico_t, ico]],
+			f[isurfacestart:isurfaceend], 
+			u[isurfacestart:isurfaceend],
 			ps,
 			nothing
 		)
-		for ia in [ico2, ico2_t, icooh_t, iohminus, ico_t, ico]
-			f[ia] *= -1
-		end
-		#@views f[[ico2, iohminus, ico]] .*= S
 		f[ico2] *= S
 		f[iohminus] *= S
 		f[ico] *= S
@@ -356,16 +383,21 @@ md"""
 Only the third reaction is assumed to pass through an activated transition state. An Arrhenius relation is assumed with pre-exponential factors of 10¹³ and 10⁸ for the first three reactions and the last reaction (desoprtion of CO) respectively.
 """
 
+# ╔═╡ b726505e-4d4d-4f7a-a4e0-881bc2bc9488
+md"""
+The activation energy is given by the change in the Gibbs free energy, $ΔG_f$, between the initial and transition state. In case the reaction is assumed not pass through a separate transition state, the Gibbs free energy of the transition state is set to the maximum of the Gibbs free energies of the inital/final state.
+"""
+
+# ╔═╡ e3eda42f-e2f3-4c10-81c4-610246ca528d
+md"""
+The Gibbs free energies are based on potential energies calculated by applying DFT-methods. In order to obtain thermodynamic values ab-initio statistical models are used.
+"""
+
 # ╔═╡ 7b87aa2a-dbaf-441c-9ad7-444abf15f664
 md"""
 The free energies $ΔG_f$ of the surface species are corrected according to the (excess) surface charge density $σ$ by a fitted quadratic model:
 
 $ΔG_f(σ) = a_σ~σ + b_σ~σ^2$
-"""
-
-# ╔═╡ cd09688c-3a69-4cc6-94db-d593535dc0d6
-md"""
-The Gibbs free energy of the elementary reactions.
 """
 
 # ╔═╡ 6e4c792e-e169-4b49-89d0-9cf8d5ac8c04
@@ -464,17 +496,18 @@ md"""
 begin
 	function addplot(vis, sol, vshow)
 		species = bulk.name
-		colors = [:orange, :brown, :violet, :red, :green, :gray, :blue]
+		colors = bulk.color
 		
 		scale = 1.0 / (mol / dm^3)
 	    title = @sprintf("Φ_we=%+1.2f [V vs. SHE]", vshow)
 	
 		if useonly_pH
+			i = findfirst(isequal("H⁺"), species)
 			scalarplot!(vis, 
 					    grid.components[XCoordinates] .+ 1.0e-14, 
 					    log10.(sol[ihplus, :] * scale), 
-					    color = colors[7],
-					    label = species[7],
+					    color = colors[i],
+					    label = species[i],
 					    clear = true,
 						title = title)
 		else
@@ -569,7 +602,7 @@ begin
  								 ylabel = "log c(aᵢ)", 
 								 xscale = :log,)
 	
-		vrange = result.voltages[1:5:end]
+		vrange = result.voltages[end:-5:1]
 		movie(vis, file="concentrations.gif", framerate=3) do vis
 		for vshow_it in vrange
 			addplot(vis, tsol(vshow_it), vshow_it)
@@ -687,7 +720,6 @@ Latexify = "23fbe1c1-3f47-55db-b15f-69d7ec21a316"
 LessUnitful = "f29f6376-6e90-4d80-80c9-fb8ec61203d5"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 LiquidElectrolytes = "5a7dfd8c-b3af-4c8d-a082-d3a774d75e72"
-MethodAnalysis = "85b6ec6f-f7df-4429-9514-a64bcd9ee824"
 ModelingToolkit = "961ee093-0014-501f-94e3-6117800e7a78"
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
@@ -707,7 +739,6 @@ HypertextLiteral = "~0.9.4"
 Latexify = "~0.16.1"
 LessUnitful = "~0.6.1"
 LiquidElectrolytes = "~0.2.1"
-MethodAnalysis = "~0.4.13"
 ModelingToolkit = "~8.65.0"
 PlutoUI = "~0.7.52"
 PreallocationTools = "~0.4.12"
@@ -721,7 +752,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.10.0-beta1"
 manifest_format = "2.0"
-project_hash = "c745e74a914bc6c83011be1c26678c6344dd7895"
+project_hash = "48c5b0de311492c7daba7906d864de93d2c1ff23"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "a4c8e0f8c09d4aa708289c1a5fc23e2d1970017a"
@@ -2064,12 +2095,6 @@ git-tree-sha1 = "51d946d38d62709d6a2d37ea9bcc30c80c686801"
 uuid = "eff96d63-e80a-5855-80a2-b1b0885c5ab7"
 version = "2.9.0"
 
-[[deps.MethodAnalysis]]
-deps = ["AbstractTrees"]
-git-tree-sha1 = "c2ee9b8f036c951f9ed0a47503a7f7dc0905b256"
-uuid = "85b6ec6f-f7df-4429-9514-a64bcd9ee824"
-version = "0.4.13"
-
 [[deps.Missings]]
 deps = ["DataAPI"]
 git-tree-sha1 = "f66bdc5de519e8f8ae43bdc598782d35a25b1272"
@@ -3223,7 +3248,6 @@ version = "3.5.0+0"
 # ╔═╡ Cell order:
 # ╠═7d4c7695-1b96-419c-aa77-35bb14730cb4
 # ╠═91ac9e35-71eb-4570-bef7-f63c67ce3881
-# ╠═7708e4a0-1751-4614-9c47-bd997c3cd765
 # ╟─beae1479-1c0f-4a55-86e1-ad2b50174c83
 # ╟─ab2184fc-0279-46d9-9ee4-88fe3e732789
 # ╠═7316901c-d85d-48e9-87dc-3614ab3d81a5
@@ -3245,8 +3269,9 @@ version = "3.5.0+0"
 # ╠═91113083-d80e-4528-be41-82d10f6860fc
 # ╟─d0093605-0e35-4888-a93c-8456c698e6f0
 # ╟─f0b5d356-6b97-4878-98de-bee5f380d41a
+# ╟─b726505e-4d4d-4f7a-a4e0-881bc2bc9488
+# ╟─e3eda42f-e2f3-4c10-81c4-610246ca528d
 # ╟─7b87aa2a-dbaf-441c-9ad7-444abf15f664
-# ╟─cd09688c-3a69-4cc6-94db-d593535dc0d6
 # ╟─6e4c792e-e169-4b49-89d0-9cf8d5ac8c04
 # ╠═e7e0eb0d-fe3e-4f1d-876f-cc13a9aaf84c
 # ╠═e510bce3-d33f-47bb-98d6-121eee8f2252

@@ -118,7 +118,7 @@ function generate_function(rn::ReactionSystem, dvs, ps)
     species_map = speciesmap(rn)
     sys = convert(ODESystem, rn; combinatoric_ratelaws=false)
     eqs = equations(sys)
-    rhss = [eqs[species_map[dv]].rhs for dv in dvs]
+    rhss = [-1 * eqs[species_map[dv]].rhs for dv in dvs] # multiply by -1 because the orientation assumed in VoronoiFVM physics functions
 
     u = map(x -> ModelingToolkit.time_varying_as_func(ModelingToolkit.value(x), sys), dvs)
     p = map(x -> ModelingToolkit.time_varying_as_func(ModelingToolkit.value(x), sys), ps)
@@ -126,5 +126,6 @@ function generate_function(rn::ReactionSystem, dvs, ps)
 
     pre, sol_states = ModelingToolkit.get_substitutions_and_solved_states(sys, no_postprocess = false)
 
-    build_function(rhss, u, p, t; postprocess_fbody = pre, states = sol_states)[2]
+    f_expr = build_function(rhss, u, p, t; postprocess_fbody = pre, states = sol_states)[2]
+    drop_expr(@RuntimeGeneratedFunction(@__MODULE__, f_expr))
 end
