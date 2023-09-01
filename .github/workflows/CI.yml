@@ -29,9 +29,10 @@ jobs:
         with:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
-      - name: Set ENV Variables for PyCall.jl 🐍 📞
-        run: export PYTHON=""
-        shell: bash
       - uses: julia-actions/cache@v1
       - uses: julia-actions/julia-buildpkg@v1
+        env:
+          PYTHON=""
       - uses: julia-actions/julia-runtest@v1
+        env:
+          PYTHON=""
