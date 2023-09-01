@@ -22,11 +22,8 @@ def get_thermal_correction_ideal_gas(T, frequencies, symmetrynumber, geometry, s
     free_energy = H-T*S
     return free_energy
 	"""
+    @pyinclude(joinpath(@__DIR__, "../data/parameter_data.py"))
 end
-
-@pyinclude(joinpath(@__DIR__, "../data/parameter_data.py"))
-ideal_gas_params = py"ideal_gas_params"
-hbond_dict = py"hbond_dict"
 
 using Catalyst
 using ModelingToolkit

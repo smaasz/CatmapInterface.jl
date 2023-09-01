@@ -5,6 +5,8 @@ Add thermodynamic correction terms for all gas species using the ideal gas appro
 """
 function ideal_gas(energies::Dict{String, Tval}, catmap_params::CatmapParams) where Tval <: Real
     @local_unitfactors eV
+    
+    ideal_gas_params = py"ideal_gas_params"
     (; species_list, T) = catmap_params
     for (s, sp) in species_list
         if isa(sp, GasSpecies)
@@ -58,6 +60,7 @@ Add electrochemical correction terms for all influenced species using ...
 """
 function hbond_surface_charge_density(energies, catmap_params::CatmapParams, σ, ϕ_we, ϕ, local_pH)
     @local_unitfactors eV
+    hbond_dict = py"hbond_dict"
     (; species_list, T, Upzc, potential_reference_scale) = catmap_params
     # simple_electrochem_corrections
     if haskey(energies, "ele_g")
