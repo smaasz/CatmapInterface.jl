@@ -32,7 +32,7 @@ jobs:
       - uses: julia-actions/cache@v1
       - uses: julia-actions/julia-buildpkg@v1
         env:
-          PYTHON=""
+          PYTHON: ""
       - uses: julia-actions/julia-runtest@v1
         env:
-          PYTHON=""
+          PYTHON: ""
