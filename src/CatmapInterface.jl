@@ -29,12 +29,13 @@ ideal_gas_params = py"ideal_gas_params"
 hbond_dict = py"hbond_dict"
 
 using Catalyst
+using ModelingToolkit
 using DelimitedFiles
 using LessUnitful
 include("interface.jl")
 export parse_catmap_input
 include("corrections.jl")
 include("reaction_network.jl")
-export create_reaction_network
+export create_reaction_network, generate_function
 
 end

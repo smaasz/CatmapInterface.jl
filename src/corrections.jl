@@ -1,5 +1,5 @@
 """
-$(SIGNATURES)
+    ideal_gas(energies::Dict{String, Tval}, catmap_params::CatmapParams) where Tval <: Real
 
 Add thermodynamic correction terms for all gas species using the ideal gas approximation.
 """
@@ -24,7 +24,7 @@ function ideal_gas(energies::Dict{String, Tval}, catmap_params::CatmapParams) wh
 end
 
 """
-$(SIGNATURES)
+    harmonic_adsorbate(energies, catmap_params::CatmapParams)
 
 Add thermodynamic correction terms for all adsorbed species using the harmonic adsorbate approximation.
 """
@@ -52,7 +52,7 @@ function harmonic_adsorbate(energies, catmap_params::CatmapParams)
 end
 
 """
-$(SIGNATURES)
+    hbond_surface_charge_density(energies, catmap_params::CatmapParams, σ, ϕ_we, ϕ, local_pH)
 
 Add electrochemical correction terms for all influenced species using ...
 """

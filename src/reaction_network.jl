@@ -110,3 +110,21 @@ function create_reaction_network(catmap_params::CatmapParams)
     end
     ReactionSystem(rxs, t, name = :microkinetics)
 end
+
+function generate_function(rn::ReactionSystem, dvs, ps)
+    @assert Set(dvs) == Set(species(rn))
+    @assert Set(ps)  == Set(parameters(rn))
+
+    species_map = speciesmap(rn)
+    sys = convert(ODESystem, rn; combinatoric_ratelaws=false)
+    eqs = equations(sys)
+    rhss = [eqs[species_map[dv]].rhs for dv in dvs]
+
+    u = map(x -> ModelingToolkit.time_varying_as_func(ModelingToolkit.value(x), sys), dvs)
+    p = map(x -> ModelingToolkit.time_varying_as_func(ModelingToolkit.value(x), sys), ps)
+    t = ModelingToolkit.get_iv(sys)
+
+    pre, sol_states = ModelingToolkit.get_substitutions_and_solved_states(sys, no_postprocess = false)
+
+    build_function(rhss, u, p, t; postprocess_fbody = pre, states = sol_states)[2]
+end
