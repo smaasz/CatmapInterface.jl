@@ -32,6 +32,7 @@ using LessUnitful
 using RuntimeGeneratedFunctions
 RuntimeGeneratedFunctions.init(@__MODULE__)
 include("species.jl")
+export AbstractSpecies, GasSpecies, AdsorbateSpecies, SiteSpecies, TStateSpecies, FictiousSpecies
 include("interface.jl")
 export parse_catmap_input
 include("corrections.jl")

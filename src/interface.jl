@@ -101,9 +101,12 @@ end
 
 const re_reactant_sum  = r"^(?:[^+]+)(?:\+[^+]+)*$"
 const re_reactant      = r"^(?<factor>[1-9][0-9]*)?(?<species>[A-Za-z0-9]*)\*?_(?<site>[a-z])$"
+"""
+    parse_reactant_sum(rs::String) 
 
-
-function parse_reactant_sum(rs)
+Parse a string as a sum of reactants into a list of pairs reactant/stoichiometric factor.
+"""
+function parse_reactant_sum(rs::String)
     if !isnothing(match(re_reactant_sum, rs))
         rts = split(rs, "+")
     else
@@ -126,7 +129,6 @@ end
 
 const re_rxn            = r"^(?<educts>[^<>]+)<->(?<products>[^<>]+)$"
 const re_rxn_with_TS    = r"^(?<educts>[^<>]+)<->(?<tstate>[^<>]+)<->(?<products>[^<>]+);beta=(?<beta>[0-9.]+)$"
-
 """
     parse_reaction(r::String)
 
@@ -142,7 +144,7 @@ julia> CatmapInterface.parse_reaction("COOH*_t + H2O_g + ele_g <-> COOH-H2O-ele_
 CatmapInterface.ParsedReaction(["COOH_t" => 1, "H2O_g" => 1, "ele_g" => 1], ["CO_t" => 1, "H2O_g" => 1, "OH_g" => 1, "_t" => 1], CatmapInterface.TState("COOH-H2O-ele_t", 0.5))
 ```
 """
-function parse_reaction(r)
+function parse_reaction(r::String)
     r = remove_whitespaces(r)
     
     match_rxn           = match(re_rxn, r)
@@ -319,13 +321,12 @@ const re_gas            = r"^(?<species_name>[A-Za-z0-9]+)_g$"
 const re_adsorbate      = r"^(?<species_name>[A-Za-z0-9]+)_(?<site>[^g])$"
 const re_site           = r"^_(?<site>[^g])$"
 const re_tstate         = r"^(?<species_name>[A-Za-z0-9\-]+)_(?<site>[^g])$"
-# for each species included in the reactions
-#   1. check that there exists an entry in species_defs
-#   2. determine the type of the species
-#   3a. if type == gas, complete species_def by using energy table
-#   3b. if type == adsorbate, then determine the site, for each surface complete species_def by using energy table
-#   3c. if type == tstate, then do same as for adsorbate
-#   3d. if type == fictious, then ...
+
+"""
+    specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_table, surface_name)
+
+Collect the specifications of all reactants in a list.
+"""
 function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_table, surface_name)
     @local_unitfactors μA cm
     # collect all species in a set
@@ -419,6 +420,11 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
     species_list
 end
 
+"""
+    findspecies(species_name::AbstractString, site::AbstractString, species_defs)
+
+Extract specification of a species at a given site from the species_defs of a CatMAP input file.
+"""
 function findspecies(species_name::AbstractString, site::AbstractString, species_defs)
     species = isempty(species_name) ? site : "$(species_name)_$(site)"
     try
@@ -432,6 +438,11 @@ function findspecies(species_name::AbstractString, site::AbstractString, species
     end
 end
 
+"""
+    findspecies(species_name::AbstractString, energy_table; surface_name="None", site_name="gas")
+
+Extract specification of a species from an energy table.
+"""
 function findspecies(species_name::AbstractString, energy_table; surface_name="None", site_name="gas")
     found = nothing
     for row in energy_table

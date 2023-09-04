@@ -12,6 +12,11 @@ function ratelaw_TS(prefactor, Gf_IS, Gf_TS, T, activprod)
     prefactor * exp(-(Gf_TS - Gf_IS) / (k_B * T)) * activprod
 end
 
+"""
+    compute_free_energies!(free_energies, catmap_params::CatmapParams, σ, ϕ_we, ϕ, local_pH) 
+
+Compute the Gibbs free energies of all species specified in the `catmap_params` by applying the specified correction modes.
+"""
 function compute_free_energies!(free_energies, catmap_params::CatmapParams, σ, ϕ_we, ϕ, local_pH)
     (; gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode) = catmap_params
 
@@ -31,6 +36,19 @@ function compute_free_energies!(free_energies, catmap_params::CatmapParams, σ, 
     nothing
 end
 
+
+"""
+    create_reaction_network(catmap_params::CatmapParams)
+
+Create a [ReactionSystem](https://docs.sciml.ai/Catalyst/stable/api/catalyst_api/#Catalyst.ReactionSystem) for the specified microkinetic model.
+
+For each elementary reaction the [ratelaw_TS](@ref) is used.
+No separate rate equations for the solvent (= H₂O) and the active sites are created but their activities can be specified as parameters.
+For ficitious gases (OH⁻ and H⁺) and adsorbates the activity coefficients are assumed to be 1.
+The activity coefficients of the gaseous species can specified as parameters.
+The thermodynamical corrections to the DFT-data of the formation energies are applied according to the specified modes.
+New modes can be added by the user by adding a function with the same name to the module. 
+"""
 function create_reaction_network(catmap_params::CatmapParams)
     (; species_list, T) = catmap_params
 
@@ -111,7 +129,12 @@ function create_reaction_network(catmap_params::CatmapParams)
     ReactionSystem(rxs, t, name = :microkinetics)
 end
 
-function generate_function(rn::ReactionSystem, dvs, ps)
+"""
+    generate_function(rn::ReactionSystem, dvs::Vector{Num}, ps::Vector{Num})
+
+Generate a mutating function from a `ReactionSystem` that computes the concentration fluxes due to the reaction.
+"""
+function generate_function(rn::ReactionSystem, dvs::Vector{Num}, ps::Vector{Num})
     @assert Set(dvs) == Set(species(rn))
     @assert Set(ps)  == Set(parameters(rn))
 
