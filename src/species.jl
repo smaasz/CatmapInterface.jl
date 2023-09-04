@@ -1,6 +1,6 @@
 
 """
-    abstract type AbstractSpecies
+$(TYPEDEF)
 
 Abstract supertype of species.
 """
@@ -8,7 +8,7 @@ abstract type AbstractSpecies end
 
 
 """
-    struct FictiousSpecies <: AbstractSpecies
+$(TYPEDEF)
 
 $(TYPEDFIELDS)
 """
@@ -34,7 +34,7 @@ struct FictiousSpecies <:AbstractSpecies
 end
 
 """
-    struct GasSpecies <: AbstractSpecies
+$(TYPEDEF)
 
 $(TYPEDFIELDS)
 """
@@ -67,7 +67,7 @@ struct GasSpecies <: AbstractSpecies
 end
 
 """
-    struct GasSpecies <: AbstractSpecies
+$(TYPEDEF)
 
 $(TYPEDFIELDS)
 """
@@ -112,7 +112,7 @@ struct AdsorbateSpecies <: AbstractSpecies
 end
 
 """
-    struct GasSpecies <: AbstractSpecies
+$(TYPEDEF)
 
 $(TYPEDFIELDS)
 """
@@ -165,6 +165,11 @@ struct TStateSpecies <: AbstractSpecies
 end
 #TStateSpecies(; formation_energy, coverage, site, surface_name, frequencies, sigma_params::Vector{Float64}) = TStateSpecies(; formation_energy, coverage, site, surface_name, frequencies, sigma_params=(; a=sigma_params[1], b=sigma_params[2]))
 
+"""
+$(TYPEDEF)
+
+$(TYPEDFIELDS)
+"""
 struct SiteSpecies <: AbstractSpecies
     """
     Formation energy of the site in joule per mole

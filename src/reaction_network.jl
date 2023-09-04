@@ -1,5 +1,5 @@
 """
-    ratelaw_TS(prefactor, Gf_IS, Gf_TS, T, activprod)
+$(SIGNATURES)
 
 Computes the rate of an elementary reaction that passes through a transition state.
 
@@ -13,7 +13,7 @@ function ratelaw_TS(prefactor, Gf_IS, Gf_TS, T, activprod)
 end
 
 """
-    compute_free_energies!(free_energies, catmap_params::CatmapParams, σ, ϕ_we, ϕ, local_pH) 
+$(SIGNATURES)
 
 Compute the Gibbs free energies of all species specified in the `catmap_params` by applying the specified correction modes.
 """
@@ -38,7 +38,7 @@ end
 
 
 """
-    create_reaction_network(catmap_params::CatmapParams)
+$(SIGNATURES)
 
 Create a [ReactionSystem](https://docs.sciml.ai/Catalyst/stable/api/catalyst_api/#Catalyst.ReactionSystem) for the specified microkinetic model.
 
@@ -130,7 +130,7 @@ function create_reaction_network(catmap_params::CatmapParams)
 end
 
 """
-    generate_function(rn::ReactionSystem, dvs::Vector{Num}, ps::Vector{Num})
+$(SIGNATURES)
 
 Generate a mutating function from a `ReactionSystem` that computes the concentration fluxes due to the reaction.
 """

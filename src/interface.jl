@@ -11,7 +11,7 @@ end
 
 
 """
-    struct CatmapParams
+$(TYPEDEF)
 
 Main data structure for interfacing CatMAP
 
@@ -102,11 +102,11 @@ end
 const re_reactant_sum  = r"^(?:[^+]+)(?:\+[^+]+)*$"
 const re_reactant      = r"^(?<factor>[1-9][0-9]*)?(?<species>[A-Za-z0-9]*)\*?_(?<site>[a-z])$"
 """
-    parse_reactant_sum(rs::String) 
+$(SIGNATURES) 
 
 Parse a string as a sum of reactants into a list of pairs reactant/stoichiometric factor.
 """
-function parse_reactant_sum(rs::String)
+function parse_reactant_sum(rs::AbstractString)
     if !isnothing(match(re_reactant_sum, rs))
         rts = split(rs, "+")
     else
@@ -130,7 +130,7 @@ end
 const re_rxn            = r"^(?<educts>[^<>]+)<->(?<products>[^<>]+)$"
 const re_rxn_with_TS    = r"^(?<educts>[^<>]+)<->(?<tstate>[^<>]+)<->(?<products>[^<>]+);beta=(?<beta>[0-9.]+)$"
 """
-    parse_reaction(r::String)
+$(SIGNATURES) 
 
 Parse a specification of a chemical reaction into a [`ParsedReaction`](@ref).
 
@@ -144,7 +144,7 @@ julia> CatmapInterface.parse_reaction("COOH*_t + H2O_g + ele_g <-> COOH-H2O-ele_
 CatmapInterface.ParsedReaction(["COOH_t" => 1, "H2O_g" => 1, "ele_g" => 1], ["CO_t" => 1, "H2O_g" => 1, "OH_g" => 1, "_t" => 1], CatmapInterface.TState("COOH-H2O-ele_t", 0.5))
 ```
 """
-function parse_reaction(r::String)
+function parse_reaction(r::AbstractString)
     r = remove_whitespaces(r)
     
     match_rxn           = match(re_rxn, r)
@@ -188,7 +188,7 @@ end
 
 
 """
-    parse_energy_table(input_file_path)
+$(SIGNATURES) 
 
 Parse an energy table into a list of named tuples.
 
@@ -205,7 +205,7 @@ The following are recognized (the order of the columns does not matter):
 - reference
 """
 function parse_energy_table(input_file_path)
-    @local_unitfactors eV
+    @local_unitfactors eV cm
     (dc, dh) = readdlm(input_file_path, '\t', String; header=true)
     entry_types = [
         :surface_name      => String, 
@@ -254,7 +254,7 @@ end
 
 
 """
-    parse_catmap_input(input_file_path::String)
+$(SIGNATURES) 
 
 Parse the content of a CatMAP input file needed for a Poisson-Nernst-Planck model.
 
@@ -273,7 +273,7 @@ The following information is used and must be specified:
 - electrochemical_thermo_mode
 See [CatMAP documentation](https://catmap.readthedocs.io/en/latest/index.html) for details.
 """
-function parse_catmap_input(input_file_path::String)
+function parse_catmap_input(input_file_path::AbstractString)
     @assert isfile(input_file_path)
     @pyinclude(input_file_path)
     
@@ -323,7 +323,7 @@ const re_site           = r"^_(?<site>[^g])$"
 const re_tstate         = r"^(?<species_name>[A-Za-z0-9\-]+)_(?<site>[^g])$"
 
 """
-    specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_table, surface_name)
+$(SIGNATURES) 
 
 Collect the specifications of all reactants in a list.
 """
@@ -421,7 +421,7 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
 end
 
 """
-    findspecies(species_name::AbstractString, site::AbstractString, species_defs)
+$(SIGNATURES) 
 
 Extract specification of a species at a given site from the species_defs of a CatMAP input file.
 """
@@ -439,7 +439,7 @@ function findspecies(species_name::AbstractString, site::AbstractString, species
 end
 
 """
-    findspecies(species_name::AbstractString, energy_table; surface_name="None", site_name="gas")
+$(SIGNATURES) 
 
 Extract specification of a species from an energy table.
 """
