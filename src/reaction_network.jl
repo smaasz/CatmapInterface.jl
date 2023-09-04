@@ -134,7 +134,7 @@ $(SIGNATURES)
 
 Generate a mutating function from a `ReactionSystem` that computes the concentration fluxes due to the reaction.
 """
-function generate_function(rn::ReactionSystem, dvs::Vector{Num}, ps::Vector{Num})
+function generate_function(rn::ReactionSystem, dvs::Vector{Tval}, ps::Vector{Tval}) where {Tval <: Union{SymbolicUtils.BasicSymbolic{Real}, Num}}
     @assert Set(dvs) == Set(species(rn))
     @assert Set(ps)  == Set(parameters(rn))
 
@@ -143,8 +143,8 @@ function generate_function(rn::ReactionSystem, dvs::Vector{Num}, ps::Vector{Num}
     eqs = equations(sys)
     rhss = [-1 * eqs[species_map[dv]].rhs for dv in dvs] # multiply by -1 because the orientation assumed in VoronoiFVM physics functions
 
-    u = map(x -> ModelingToolkit.time_varying_as_func(ModelingToolkit.value(x), sys), dvs)
-    p = map(x -> ModelingToolkit.time_varying_as_func(ModelingToolkit.value(x), sys), ps)
+    u = map(x -> ModelingToolkit.time_varying_as_func(Symbolics.value(x), sys), dvs)
+    p = map(x -> ModelingToolkit.time_varying_as_func(Symbolics.value(x), sys), ps)
     t = ModelingToolkit.get_iv(sys)
 
     pre, sol_states = ModelingToolkit.get_substitutions_and_solved_states(sys, no_postprocess = false)

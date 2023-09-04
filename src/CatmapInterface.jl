@@ -31,6 +31,8 @@ using DelimitedFiles
 using LessUnitful
 using RuntimeGeneratedFunctions
 using DocStringExtensions
+using Symbolics
+using SymbolicUtils
 RuntimeGeneratedFunctions.init(@__MODULE__)
 include("species.jl")
 export AbstractSpecies, GasSpecies, AdsorbateSpecies, SiteSpecies, TStateSpecies, FictiousSpecies

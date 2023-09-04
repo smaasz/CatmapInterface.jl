@@ -16,9 +16,9 @@ end
 
 # ╔═╡ 7d4c7695-1b96-419c-aa77-35bb14730cb4
 begin
-	import Pkg as _Pkg
-	_Pkg.activate(joinpath(@__DIR__, "."))
-	using Revise
+	import Pkg as _Pkg # hide
+    haskey(ENV,"PLUTO_PROJECT") && _Pkg.activate(ENV["PLUTO_PROJECT"]) # hide
+    using Revise # hide
 end;
 
 # ╔═╡ 91ac9e35-71eb-4570-bef7-f63c67ce3881
@@ -3253,7 +3253,7 @@ version = "3.5.0+0"
 # ╠═7316901c-d85d-48e9-87dc-3614ab3d81a5
 # ╟─6b7cfe87-8190-40a5-8d25-e39ef8d55db5
 # ╠═5a146a44-03dc-45f3-ae15-993d11c2edac
-# ╠═88836b47-125e-44ae-a2d9-f83272eba33e
+# ╟─88836b47-125e-44ae-a2d9-f83272eba33e
 # ╟─ca22e3fe-5cb7-4910-b9fa-890fd2d20e4b
 # ╟─4c95d645-f909-492b-a425-927c093ae31a
 # ╟─4b64e168-5fe9-4202-9657-0d4afc237ddc
