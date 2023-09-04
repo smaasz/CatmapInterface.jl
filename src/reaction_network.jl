@@ -42,7 +42,7 @@ $(SIGNATURES)
 
 Create a [ReactionSystem](https://docs.sciml.ai/Catalyst/stable/api/catalyst_api/#Catalyst.ReactionSystem) for the specified microkinetic model.
 
-For each elementary reaction the [ratelaw_TS](@ref) is used.
+For each elementary reaction the [`CatmapInterface.ratelaw_TS`](@ref) is used.
 No separate rate equations for the solvent (= H₂O) and the active sites are created but their activities can be specified as parameters.
 For ficitious gases (OH⁻ and H⁺) and adsorbates the activity coefficients are assumed to be 1.
 The activity coefficients of the gaseous species can specified as parameters.
