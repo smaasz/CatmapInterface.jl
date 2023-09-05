@@ -1,11 +1,40 @@
+"""
+$(TYPEDEF)
+
+A transition state
+
+$(TYPEDFIELDS)
+"""
 @kwdef struct TState
-    symbol::String
+    """
+    Name of the transition state
+    """
+    name::String
+    """
+    Transfer coefficient of the transition state
+    """
     beta::Float64
 end
 
+"""
+$(TYPEDEF)
+
+Holds the information of a parsed reaction equation.
+
+$(TYPEDFIELDS)
+"""
 @kwdef struct ParsedReaction
+    """
+    List of educts stored as a pair of the name and stoichiometric factor
+    """
     educts::Vector{Pair{String, Int}}
+    """
+    List of products stored as a pair of the name and stoichiometric factor
+    """
     products::Vector{Pair{String, Int}}
+    """
+    A [`CatmapInterface.TState`](@ref) if the reaction equation contains a transition state
+    """
     tstate::Union{Nothing, TState}
 end
 
@@ -117,8 +146,8 @@ function parse_reactant_sum(rs::AbstractString)
         match_reactant = match(re_reactant, rt)
         if !isnothing(match_reactant)
             factor = isnothing(match_reactant[:factor]) ? 1 : parse(Int, match_reactant[:factor])
-            symbol = "$(match_reactant[:species])_$(match_reactant[:site])"
-            push!(reactants, symbol => factor)
+            name = "$(match_reactant[:species])_$(match_reactant[:site])"
+            push!(reactants, name => factor)
         else
             throw(ArgumentError("$rt is not a valid reactant"))
         end
@@ -132,7 +161,7 @@ const re_rxn_with_TS    = r"^(?<educts>[^<>]+)<->(?<tstate>[^<>]+)<->(?<products
 """
 $(SIGNATURES) 
 
-Parse a specification of a chemical reaction into a [`ParsedReaction`](@ref).
+Parse a specification of a chemical reaction into a [`CatmapInterface.ParsedReaction`](@ref).
 
 # Example
 
@@ -166,7 +195,7 @@ function parse_reaction(r::AbstractString)
             throw(ArgumentError("$(match_rxn_with_TS[:beta]) is not a valid float"))
         end
         
-        tstate = TState(symbol=match_rxn_with_TS[:tstate], beta=beta)
+        tstate = TState(name=match_rxn_with_TS[:tstate], beta=beta)
     else
         throw(ArgumentError("$r is not a valid reaction equation"))
     end
@@ -286,7 +315,7 @@ function parse_catmap_input(input_file_path::AbstractString)
 
     species_definitions = py"species_definitions"
 
-    energies_file_path  = joinpath(dirname(input_file_path), py"input_file")
+    energies_file_path  = isabspath(py"input_file") ? py"input_file" : joinpath(dirname(input_file_path), py"input_file")
     energy_table        = parse_energy_table(energies_file_path)
 
     surface_name = let 
@@ -374,7 +403,7 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
         if isnothing(tstate)
             continue
         end
-        match_tstate = match(re_tstate, tstate.symbol)
+        match_tstate = match(re_tstate, tstate.name)
         if !isnothing(match_tstate)
             species_name                        = match_tstate[:species_name]
             site                                = match_tstate[:site]
@@ -384,9 +413,9 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
             (; site_names)                      = findspecies("", site, species_defs)
             site_name                           = site_names[1]
             (; formation_energy, frequencies)   = findspecies(species_name, energy_table; surface_name, site_name)
-            species_list[tstate.symbol]         = TStateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params, β=tstate.beta, between_species=[first.(educts); first.(products)])
+            species_list[tstate.name]         = TStateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params, β=tstate.beta, between_species=[first.(educts); first.(products)])
         else
-            throw(ArgumentError("$(tstate.symbol) is not a valid transition state"))
+            throw(ArgumentError("$(tstate.name) is not a valid transition state"))
         end
     end
     # special case to make sure that H2_g and H2O_g are contained in the list

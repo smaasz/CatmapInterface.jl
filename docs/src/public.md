@@ -1,8 +1,11 @@
+# Public Documentation
+
 ## General Remarks
 
 ## Interface
 ```@docs
 parse_catmap_input
+CatmapParams
 ```
 
 ## Species
@@ -19,5 +22,4 @@ SiteSpecies
 ```@docs
 create_reaction_network
 CatmapInterface.generate_function(::ReactionSystem, ::Vector{Num}, ::Vector{Num})
-CatmapInterface.ratelaw_TS
 ```

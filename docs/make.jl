@@ -50,10 +50,16 @@ function mkdocs()
         repo        = "https://github.com/smaasz/CatmapInterface.jl",
         pages       = [
             "Home"      => "index.md",
-            "API"       => "API.md",
+            "Guide"     => "guide.md",
+            "Public"    => "public.md",
+            "Internal"  => "internal.md",
             "Notebooks" => notebooks,
         ]
     )
 end
 
 mkdocs()
+
+if !isinteractive()
+    deploydocs(repo = "github.com/smaasz/CatmapInterface.jl")
+end
