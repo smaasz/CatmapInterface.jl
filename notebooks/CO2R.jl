@@ -130,7 +130,7 @@ begin
 	const isurfaceend = 10
 	const na 		= 3 # CO_t, CO2_t, COOH_t
 	const M0 		= 18.0153 * ufac"g/mol"
-	const v0        = 1 / (55.4 * ufac"M")
+	const v0        = 1 / (55.4 * ufac"M") # N_A * (8.2 * Å)^3
 	
 	const species_dict = Dict(
 		"K⁺" => ikplus,
@@ -237,7 +237,7 @@ begin
 		(; ip, iϕ, v0, v, M0, M, κ, ε_0, ε, RT, nc, pscale, p_bulk) = data
 		p = u[ip] * pscale-p_bulk
 
-    	@views c0, bar_c = c0_barc(u[1:nc], data)
+    	c0, bar_c = c0_barc(u, data)
 
 		γ = get_tmp(γ_cache, u[ico2])
 		γ .= 1.0/(1-v[ikplus]*u[ikplus]/(mol/dm^3))
@@ -245,7 +245,7 @@ begin
 		# 	Mrel = M[ic] / M0
 		# 	barv = v[ic] + κ[ic] * v0
 		# 	tildev = barv - Mrel * v0
-		#  	γ[ic] = exp(tildev * p / (RT)) * (bar_c / c0)^Mrel*(1/bar_c)
+		#  	γ[ic] = exp(tildev * p / (RT)) * (bar_c / c0)^Mrel*(1/bar_c) /v0
 		# end
 		
 		
@@ -331,12 +331,13 @@ begin
 		(; ip, iϕ, v0, v, M0, M, κ, RT, nc, pscale, p_bulk, ϕ_we) = data
 		p = u[ip] * pscale-p_bulk
 
-		@views c0, bar_c = c0_barc(u[1:nc], data)
+		c0, bar_c = c0_barc(u, data)
 
 		# γ_co2 = let 
 		# 	Mrel = M[ico2] / M0
 		# 	barv=v[ico2] + κ[ico2]*v0
 		# 	tildev=barv - Mrel*v0
+		# 	@assert isapprox(tildev, 0.0; atol=1.0e-5)
 		# 	exp(tildev * p / (RT)) * (bar_c / c0)^Mrel*(1/bar_c) /Hcp_CO2/bar
 		# end
 
@@ -352,14 +353,14 @@ begin
 		local_pH 	= -log10(u[ihplus] / (mol/dm^3))
 		
 		ps 	  = get_tmp(ps_cache, u[iϕ])
-		ps[1] = 1.0/(1-v[ikplus]*u[ikplus]/(mol/dm^3))#γ_co2
 		ps[2] = a_t
+		ps[1] = 1.0/(1-v[ikplus]*u[ikplus]/(mol/dm^3)) # γ_co2
 		ps[3] = σ
 		ps[4] = aH₂O
 		ps[5] = u[iϕ]
 		ps[6] = ϕ_we
 		ps[7] = local_pH
-		ps[8] = 1.0/(1-v[ikplus]*u[ikplus]/(mol/dm^3)) #γ_co
+		ps[8] = 1.0/(1-v[ikplus]*u[ikplus]/(mol/dm^3)) # γ_co
 	
 		@views f_microkinetics!(
 			f[isurfacestart:isurfaceend], 
