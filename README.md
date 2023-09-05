@@ -2,7 +2,7 @@
 
 | **Documentation**                 | **Build Status**        |
 |:---------------------------------:|:-----------------------:|
-| [![][docs-dev-img]][docs-dev-url] | [![][GHA-img]][GHA-url] |
+| [![](docs-dev-img)](docs-dev-url) | [![](GHA-img)](GHA-url) |
 
 ## Installation
 

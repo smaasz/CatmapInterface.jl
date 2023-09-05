@@ -11,6 +11,7 @@ CatmapInterface.hbond_surface_charge_density
 ## Interface
 
 ```@docs
+CatmapInterface.TState
 CatmapInterface.ParsedReaction
 CatmapInterface.parse_reaction
 CatmapInterface.parse_reactant_sum
