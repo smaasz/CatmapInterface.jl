@@ -13,6 +13,7 @@ const NOTEBOOKS_MD  = NOTEBOOKS .* ".md"
 function build_all_notebooks()
     thisdir=pwd()
     Pkg.activate(NOTEBOOK_DIR)
+    Pkg.develop(PackageSpec(path=pwd()))
     Pkg.instantiate()
     Pkg.activate(thisdir)
     println("Building notebooks in $NOTEBOOK_DIR")
