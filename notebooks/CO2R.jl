@@ -130,7 +130,7 @@ begin
 	const isurfaceend = 10
 	const na 		= 3 # CO_t, CO2_t, COOH_t
 	const M0 		= 18.0153 * ufac"g/mol"
-	const v0        = 1 / (55.4 * ufac"M") # N_A * (8.2 * Å)^3
+	const v0        =  N_A * (8.2 * Å)^3 # 1 / (55.4 * ufac"M")
 	
 	const species_dict = Dict(
 		"K⁺" => ikplus,
@@ -286,7 +286,7 @@ $*CO_{(ad)} \rightleftharpoons CO_{(aq)} + *$
 
 # ╔═╡ 6b5cf93c-0df3-4a18-8786-502361736838
 begin
-	catmap_params 		= parse_catmap_input("../test/catmap_CO2R_template.mkm")
+	catmap_params 		= parse_catmap_input("./catmap_CO2R_template.mkm")
 	rn 					= create_reaction_network(catmap_params)
 	vars = species(rn)
 	const f_microkinetics! 	= CatmapInterface.generate_function(
@@ -322,6 +322,7 @@ __Question is the pH-dependence only in the reaction rate constants (i.e. activi
 # ╔═╡ 91113083-d80e-4528-be41-82d10f6860fc
 begin
 	const ps_cache = DiffCache(zeros(8), 13)
+	const us_cache = DiffCache(zeros(isurfaceend-isurfacestart+1), 13)
 	
 	function we_breactions(f, 
 			u::VoronoiFVM.BNodeUnknowns{Tval, Tv, Tc, Tp, Ti}, 
@@ -353,18 +354,22 @@ begin
 		local_pH 	= -log10(u[ihplus] / (mol/dm^3))
 		
 		ps 	  = get_tmp(ps_cache, u[iϕ])
-		ps[2] = a_t
-		ps[1] = 1.0/(1-v[ikplus]*u[ikplus]/(mol/dm^3)) # γ_co2
+		ps[1] = a_t
+		ps[2] = 1.0/(1-v[ikplus]*u[ikplus]/(mol/dm^3)) /Hcp_CO2/bar *mol/dm^3 # γ_co2
 		ps[3] = σ
 		ps[4] = aH₂O
 		ps[5] = u[iϕ]
 		ps[6] = ϕ_we
 		ps[7] = local_pH
-		ps[8] = 1.0/(1-v[ikplus]*u[ikplus]/(mol/dm^3)) # γ_co
-	
+		ps[8] = 1.0/(1-v[ikplus]*u[ikplus]/(mol/dm^3)) /Hcp_CO/bar *mol/dm^3# γ_co
+
+		us = get_tmp(us_cache, u[ico_t])
+		@. us = u[isurfacestart: isurfaceend] / (mol/dm^3)
+		
 		@views f_microkinetics!(
 			f[isurfacestart:isurfaceend], 
-			u[isurfacestart:isurfaceend],
+			#u[isurfacestart:isurfaceend],
+			us,
 			ps,
 			nothing
 		)
