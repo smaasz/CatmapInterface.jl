@@ -1,10 +1,11 @@
 """
-    ideal_gas(energies::Dict{String, Tval}, catmap_params::CatmapParams) where Tval <: Real
+$(SIGNATURES)
 
 Add thermodynamic correction terms for all gas species using the ideal gas approximation.
 """
 function ideal_gas(energies::Dict{String, Tval}, catmap_params::CatmapParams) where Tval <: Real
     @local_unitfactors eV
+    @local_phconstants h c_0
     
     ideal_gas_params = py"ideal_gas_params"
     (; species_list, T) = catmap_params
@@ -13,7 +14,7 @@ function ideal_gas(energies::Dict{String, Tval}, catmap_params::CatmapParams) wh
             (; species_name, frequencies) = sp
             try
                 (symmetrynumber, geometry, spin) = ideal_gas_params[s]
-                energies[s] += py"get_thermal_correction_ideal_gas"(T, frequencies, symmetrynumber, geometry, spin, species_name) * eV
+                energies[s] += py"get_thermal_correction_ideal_gas"(T, frequencies * (h * c_0 / eV), symmetrynumber, geometry, spin, species_name) * eV
             catch e
                 if isa(e, KeyError)
                     throw(ArgumentError("$s has no specified ideal gas parameters"))
@@ -26,17 +27,18 @@ function ideal_gas(energies::Dict{String, Tval}, catmap_params::CatmapParams) wh
 end
 
 """
-    harmonic_adsorbate(energies, catmap_params::CatmapParams)
+$(SIGNATURES) 
 
 Add thermodynamic correction terms for all adsorbed species using the harmonic adsorbate approximation.
 """
 function harmonic_adsorbate(energies, catmap_params::CatmapParams)
     @local_unitfactors eV
+    @local_phconstants h c_0
     (; species_list, T) = catmap_params
     for (s, sp) in species_list
         if isa(sp, AdsorbateSpecies)
             (; frequencies) = sp
-            energies[s] += py"get_thermal_correction_adsorbate"(T, frequencies) * eV
+            energies[s] += py"get_thermal_correction_adsorbate"(T, frequencies * (h * c_0 / eV)) * eV
         end
     end
     for (s, sp) in species_list
@@ -54,7 +56,7 @@ function harmonic_adsorbate(energies, catmap_params::CatmapParams)
 end
 
 """
-    hbond_surface_charge_density(energies, catmap_params::CatmapParams, σ, ϕ_we, ϕ, local_pH)
+$(SIGNATURES) 
 
 Add electrochemical correction terms for all influenced species using ...
 """

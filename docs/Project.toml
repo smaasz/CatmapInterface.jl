@@ -1,0 +1,6 @@
+[deps]
+Catalyst = "479239e8-5488-4da2-87a7-35f2df7eef83"
+CatmapInterface = "6b1bba67-9fa6-466a-8c93-71aaf28c16e6"
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
+PlutoStaticHTML = "359b1769-a58e-495b-9770-312e911026ad"

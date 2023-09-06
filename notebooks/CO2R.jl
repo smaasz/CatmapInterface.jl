@@ -16,9 +16,9 @@ end
 
 # ╔═╡ 7d4c7695-1b96-419c-aa77-35bb14730cb4
 begin
-	import Pkg as _Pkg
-	_Pkg.activate(joinpath(@__DIR__, "."))
-	using Revise
+	import Pkg as _Pkg # hide
+    haskey(ENV,"PLUTO_PROJECT") && _Pkg.activate(ENV["PLUTO_PROJECT"]) # hide
+    using Revise # hide
 end;
 
 # ╔═╡ 91ac9e35-71eb-4570-bef7-f63c67ce3881
@@ -130,7 +130,7 @@ begin
 	const isurfaceend = 10
 	const na 		= 3 # CO_t, CO2_t, COOH_t
 	const M0 		= 18.0153 * ufac"g/mol"
-	const v0        = 1 / (55.4 * ufac"M")
+	const v0        =  N_A * (8.2 * Å)^3 # 1 / (55.4 * ufac"M")
 	
 	const species_dict = Dict(
 		"K⁺" => ikplus,
@@ -237,7 +237,7 @@ begin
 		(; ip, iϕ, v0, v, M0, M, κ, ε_0, ε, RT, nc, pscale, p_bulk) = data
 		p = u[ip] * pscale-p_bulk
 
-    	@views c0, bar_c = c0_barc(u[1:nc], data)
+    	c0, bar_c = c0_barc(u, data)
 
 		γ = get_tmp(γ_cache, u[ico2])
 		γ .= 1.0/(1-v[ikplus]*u[ikplus]/(mol/dm^3))
@@ -245,7 +245,7 @@ begin
 		# 	Mrel = M[ic] / M0
 		# 	barv = v[ic] + κ[ic] * v0
 		# 	tildev = barv - Mrel * v0
-		#  	γ[ic] = exp(tildev * p / (RT)) * (bar_c / c0)^Mrel*(1/bar_c)
+		#  	γ[ic] = exp(tildev * p / (RT)) * (bar_c / c0)^Mrel*(1/bar_c) /v0
 		# end
 		
 		
@@ -286,7 +286,7 @@ $*CO_{(ad)} \rightleftharpoons CO_{(aq)} + *$
 
 # ╔═╡ 6b5cf93c-0df3-4a18-8786-502361736838
 begin
-	catmap_params 		= parse_catmap_input("../test/catmap_CO2R_template.mkm")
+	catmap_params 		= parse_catmap_input("./catmap_CO2R_template.mkm")
 	rn 					= create_reaction_network(catmap_params)
 	vars = species(rn)
 	const f_microkinetics! 	= CatmapInterface.generate_function(
@@ -322,6 +322,7 @@ __Question is the pH-dependence only in the reaction rate constants (i.e. activi
 # ╔═╡ 91113083-d80e-4528-be41-82d10f6860fc
 begin
 	const ps_cache = DiffCache(zeros(8), 13)
+	const us_cache = DiffCache(zeros(isurfaceend-isurfacestart+1), 13)
 	
 	function we_breactions(f, 
 			u::VoronoiFVM.BNodeUnknowns{Tval, Tv, Tc, Tp, Ti}, 
@@ -331,12 +332,13 @@ begin
 		(; ip, iϕ, v0, v, M0, M, κ, RT, nc, pscale, p_bulk, ϕ_we) = data
 		p = u[ip] * pscale-p_bulk
 
-		@views c0, bar_c = c0_barc(u[1:nc], data)
+		c0, bar_c = c0_barc(u, data)
 
 		# γ_co2 = let 
 		# 	Mrel = M[ico2] / M0
 		# 	barv=v[ico2] + κ[ico2]*v0
 		# 	tildev=barv - Mrel*v0
+		# 	@assert isapprox(tildev, 0.0; atol=1.0e-5)
 		# 	exp(tildev * p / (RT)) * (bar_c / c0)^Mrel*(1/bar_c) /Hcp_CO2/bar
 		# end
 
@@ -352,18 +354,22 @@ begin
 		local_pH 	= -log10(u[ihplus] / (mol/dm^3))
 		
 		ps 	  = get_tmp(ps_cache, u[iϕ])
-		ps[1] = 1.0/(1-v[ikplus]*u[ikplus]/(mol/dm^3))#γ_co2
-		ps[2] = a_t
+		ps[1] = a_t
+		ps[2] = 1.0/(1-v[ikplus]*u[ikplus]/(mol/dm^3)) /Hcp_CO2/bar *mol/dm^3 # γ_co2
 		ps[3] = σ
 		ps[4] = aH₂O
 		ps[5] = u[iϕ]
 		ps[6] = ϕ_we
 		ps[7] = local_pH
-		ps[8] = 1.0/(1-v[ikplus]*u[ikplus]/(mol/dm^3)) #γ_co
-	
+		ps[8] = 1.0/(1-v[ikplus]*u[ikplus]/(mol/dm^3)) /Hcp_CO/bar *mol/dm^3# γ_co
+
+		us = get_tmp(us_cache, u[ico_t])
+		@. us = u[isurfacestart: isurfaceend] / (mol/dm^3)
+		
 		@views f_microkinetics!(
 			f[isurfacestart:isurfaceend], 
-			u[isurfacestart:isurfaceend],
+			#u[isurfacestart:isurfaceend],
+			us,
 			ps,
 			nothing
 		)
@@ -3253,7 +3259,7 @@ version = "3.5.0+0"
 # ╠═7316901c-d85d-48e9-87dc-3614ab3d81a5
 # ╟─6b7cfe87-8190-40a5-8d25-e39ef8d55db5
 # ╠═5a146a44-03dc-45f3-ae15-993d11c2edac
-# ╠═88836b47-125e-44ae-a2d9-f83272eba33e
+# ╟─88836b47-125e-44ae-a2d9-f83272eba33e
 # ╟─ca22e3fe-5cb7-4910-b9fa-890fd2d20e4b
 # ╟─4c95d645-f909-492b-a425-927c093ae31a
 # ╟─4b64e168-5fe9-4202-9657-0d4afc237ddc

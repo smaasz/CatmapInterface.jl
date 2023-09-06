@@ -30,9 +30,14 @@ using ModelingToolkit
 using DelimitedFiles
 using LessUnitful
 using RuntimeGeneratedFunctions
+using DocStringExtensions
+using Symbolics
+using SymbolicUtils
 RuntimeGeneratedFunctions.init(@__MODULE__)
+include("species.jl")
+export AbstractSpecies, GasSpecies, AdsorbateSpecies, SiteSpecies, TStateSpecies, FictiousSpecies
 include("interface.jl")
-export parse_catmap_input
+export CatmapParams, parse_catmap_input
 include("corrections.jl")
 include("reaction_network.jl")
 export create_reaction_network, generate_function

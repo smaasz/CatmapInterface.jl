@@ -1,0 +1,6 @@
+.vscode/
+Manifest.toml
+notebooks/*.gif
+playground.jl
+docs/build/
+docs/src/notebooks/

@@ -1,104 +1,91 @@
+"""
+$(TYPEDEF)
+
+A transition state
+
+$(TYPEDFIELDS)
+"""
 @kwdef struct TState
-    symbol::String
+    """
+    Name of the transition state
+    """
+    name::String
+    """
+    Transfer coefficient of the transition state
+    """
     beta::Float64
 end
 
+"""
+$(TYPEDEF)
+
+Holds the information of a parsed reaction equation.
+
+$(TYPEDFIELDS)
+"""
 @kwdef struct ParsedReaction
+    """
+    List of educts stored as a pair of the name and stoichiometric factor
+    """
     educts::Vector{Pair{String, Int}}
+    """
+    List of products stored as a pair of the name and stoichiometric factor
+    """
     products::Vector{Pair{String, Int}}
+    """
+    A [`CatmapInterface.TState`](@ref) if the reaction equation contains a transition state
+    """
     tstate::Union{Nothing, TState}
 end
 
-abstract type AbstractSpecies end
-
-struct FictiousSpecies <:AbstractSpecies
-    species_name::String
-    formation_energy::Float64
-    pressure::Float64
-    function FictiousSpecies(; species_name, formation_energy, pressure)
-        if pressure < 0.0
-            throw(DomainError("pressure must be nonnegative"))
-        end
-        new(species_name, formation_energy, pressure)
-    end
-end
-
-struct GasSpecies <: AbstractSpecies
-    species_name::String
-    formation_energy::Float64
-    pressure::Float64
-    frequencies::Vector{Float64}
-    function GasSpecies(; species_name, formation_energy, pressure, frequencies)
-        if pressure < 0.0
-            throw(DomainError("pressure must be nonnegative"))
-        end
-        if any(frequencies .<= 0.0)
-            throw(DomainError("all frequencies must be positive"))
-        end
-        new(species_name, formation_energy, pressure, frequencies)
-    end
-end
-
-struct AdsorbateSpecies <: AbstractSpecies
-    species_name::String
-    formation_energy::Float64
-    coverage::Float64
-    site::String
-    surface_name::String
-    frequencies::Vector{Float64}
-    sigma_params::@NamedTuple{a::Float64, b::Float64}
-    function AdsorbateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params::@NamedTuple{a::Float64, b::Float64})
-        if coverage < 0.0 || coverage > 1.0
-            throw(DomainError("coverage must be between 0 and 1"))
-        end
-        if any(frequencies .<= 0.0)
-            throw(DomainError("all frequencies must be positive"))
-        end
-        new(species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params)
-    end
-end
-#AdsorbateSpecies(; formation_energy, coverage, site, surface_name, frequencies, sigma_params::Vector{Float64}) = AdsorbateSpecies(; formation_energy, coverage, site, surface_name, frequencies, sigma_params=(; a=sigma_params[1], b=sigma_params[2]))
-
-struct TStateSpecies <: AbstractSpecies
-    species_name::String
-    formation_energy::Float64
-    coverage::Float64
-    site::String
-    surface_name::String
-    frequencies::Vector{Float64}
-    sigma_params::@NamedTuple{a::Float64, b::Float64}
-    β::Float64
-    between_species::Vector{String}
-    function TStateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params::@NamedTuple{a::Float64, b::Float64}, β, between_species)
-        if coverage < 0.0 || coverage > 1.0
-            throw(DomainError("coverage must be between 0 and 1"))
-        end
-        if any(frequencies .<= 0.0)
-            throw(DomainError("all frequencies must be positive"))
-        end
-        new(species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params, β, between_species)
-    end
-end
-#TStateSpecies(; formation_energy, coverage, site, surface_name, frequencies, sigma_params::Vector{Float64}) = TStateSpecies(; formation_energy, coverage, site, surface_name, frequencies, sigma_params=(; a=sigma_params[1], b=sigma_params[2]))
-
-struct SiteSpecies <: AbstractSpecies
-    formation_energy::Float64
-    site_name::String
-end
 
 """
+$(TYPEDEF)
+
 Main data structure for interfacing CatMAP
+
+$(TYPEDFIELDS)
 """
 struct CatmapParams
+    """
+    List of parsed reactions
+    """
     reactions::Vector{ParsedReaction}
+    """
+    Prefactors in the Arrhenius relation specifying the activation energy of the corresponding reactions
+    """
     prefactors::Vector{Float64}
+    """
+    List of species including all reactants
+    """
     species_list::Dict{String, AbstractSpecies}
+    """
+    Mode of the thermodynamical correction to the formation energy of the gases
+    """
     gas_thermo_mode::Symbol
+    """
+    Mode of the thermodynamical correction to the formation energy of the adsorbates and transition states
+    """
     adsorbate_thermo_mode::Symbol
+    """
+    Mode of the electrochemical correction to the formation energy of the species
+    """
     electrochemical_thermo_mode::Symbol
+    """
+    pH value in the bulk of the electrolyte
+    """
     bulk_pH::Float64
+    """
+    Potential of zero charge with respect to the specified potential reference scale
+    """
     Upzc::Float64
+    """
+    Either RHE or SHE
+    """
     potential_reference_scale::String
+    """
+    Temperature in the bulk
+    """
     T::Float64
     function CatmapParams(; reactions, prefactors, species_list, gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode, bulk_pH, Upzc, potential_reference_scale, T)       
         if !(length(prefactors) == length(reactions))
@@ -140,21 +127,27 @@ function remove_whitespaces(s)
     join(s_vec[map(!isspace, s_vec)])
 end
 
-function parse_reactant_sum(rs)
-    reactant_sum = r"^(?:[^+]+)(?:\+[^+]+)*$"
-    if !isnothing(match(reactant_sum, rs))
+
+const re_reactant_sum  = r"^(?:[^+]+)(?:\+[^+]+)*$"
+const re_reactant      = r"^(?<factor>[1-9][0-9]*)?(?<species>[A-Za-z0-9]*)\*?_(?<site>[a-z])$"
+"""
+$(SIGNATURES) 
+
+Parse a string as a sum of reactants into a list of pairs reactant/stoichiometric factor.
+"""
+function parse_reactant_sum(rs::AbstractString)
+    if !isnothing(match(re_reactant_sum, rs))
         rts = split(rs, "+")
     else
         throw(ArgumentError("$rs is not a valid sum of reactants"))
     end
-    reactant = r"^(?<factor>[1-9][0-9]*)?(?<species>[A-Za-z0-9]*)\*?_(?<site>[a-z])$"
     reactants = Pair{String, Int}[]
     for rt in rts
-        match_reactant = match(reactant, rt)
+        match_reactant = match(re_reactant, rt)
         if !isnothing(match_reactant)
             factor = isnothing(match_reactant[:factor]) ? 1 : parse(Int, match_reactant[:factor])
-            symbol = "$(match_reactant[:species])_$(match_reactant[:site])"
-            push!(reactants, symbol => factor)
+            name = "$(match_reactant[:species])_$(match_reactant[:site])"
+            push!(reactants, name => factor)
         else
             throw(ArgumentError("$rt is not a valid reactant"))
         end
@@ -162,12 +155,29 @@ function parse_reactant_sum(rs)
     reactants
 end
 
-function parse_reaction(r)
+
+const re_rxn            = r"^(?<educts>[^<>]+)<->(?<products>[^<>]+)$"
+const re_rxn_with_TS    = r"^(?<educts>[^<>]+)<->(?<tstate>[^<>]+)<->(?<products>[^<>]+);beta=(?<beta>[0-9.]+)$"
+"""
+$(SIGNATURES) 
+
+Parse a specification of a chemical reaction into a [`CatmapInterface.ParsedReaction`](@ref).
+
+# Example
+
+```jldoctest
+julia> CatmapInterface.parse_reaction("CO*_t <-> CO_g + *_t")
+CatmapInterface.ParsedReaction(["CO_t" => 1], ["CO_g" => 1, "_t" => 1], nothing)
+
+julia> CatmapInterface.parse_reaction("COOH*_t + H2O_g + ele_g <-> COOH-H2O-ele_t <-> CO*_t + H2O_g + OH_g + *_t; beta=0.5")
+CatmapInterface.ParsedReaction(["COOH_t" => 1, "H2O_g" => 1, "ele_g" => 1], ["CO_t" => 1, "H2O_g" => 1, "OH_g" => 1, "_t" => 1], CatmapInterface.TState("COOH-H2O-ele_t", 0.5))
+```
+"""
+function parse_reaction(r::AbstractString)
     r = remove_whitespaces(r)
-    rxn = r"^(?<educts>[^<>]+)<->(?<products>[^<>]+)$"
-    match_rxn = match(rxn, r)
-    rxn_with_TS = r"^(?<educts>[^<>]+)<->(?<tstate>[^<>]+)<->(?<products>[^<>]+);beta=(?<beta>[0-9.]+)$"
-    match_rxn_with_TS = match(rxn_with_TS, r)
+    
+    match_rxn           = match(re_rxn, r)
+    match_rxn_with_TS   = match(re_rxn_with_TS, r)
     
     educts      = []
     products    = []
@@ -185,7 +195,7 @@ function parse_reaction(r)
             throw(ArgumentError("$(match_rxn_with_TS[:beta]) is not a valid float"))
         end
         
-        tstate = TState(symbol=match_rxn_with_TS[:tstate], beta=beta)
+        tstate = TState(name=match_rxn_with_TS[:tstate], beta=beta)
     else
         throw(ArgumentError("$r is not a valid reaction equation"))
     end
@@ -205,17 +215,34 @@ function parse_vector(s, Tval)::Vector{Tval}
     end
 end
 
+
+"""
+$(SIGNATURES) 
+
+Parse an energy table into a list of named tuples.
+
+The entries of an energy table must be separated by tabs.
+The first row of an energy table includes the headers of the columns.
+The following are recognized (the order of the columns does not matter): 
+- surface_name
+- site_name
+- species_name
+- formation_energy: in eV
+- bulk_structure
+- frequencies: list of enclosed with brackets and comma-separated, in cm⁻¹
+- other_parameters
+- reference
+"""
 function parse_energy_table(input_file_path)
     @local_unitfactors eV cm
-    @local_phconstants h c_0
     (dc, dh) = readdlm(input_file_path, '\t', String; header=true)
     entry_types = [
         :surface_name      => String, 
         :site_name         => String,
         :species_name      => String,
-        :formation_energy  => Float64, #in eV
+        :formation_energy  => Float64, #in J/mole
         :bulk_structure    => String,
-        :frequencies       => Vector{Float64}, # in (h / cm / eV * c_0)^-1
+        :frequencies       => Vector{Float64}, # in m⁻¹
         :other_parameters  => Vector{String},
         :reference         => String,
     ]
@@ -235,7 +262,7 @@ function parse_energy_table(input_file_path)
                 elseif entry_header == :formation_energy
                     push!(row, entry_header => parse(entry_type, entry) * eV)
                 elseif entry_header == :frequencies
-                    push!(row, entry_header => parse_vector(entry, eltype(entry_type)) .* h / cm / eV * c_0)
+                    push!(row, entry_header => parse_vector(entry, eltype(entry_type)) ./ cm)
                 elseif entry_type <: Number
                     push!(row, entry_header => parse(entry_type, entry))
                 elseif entry_type <: Vector
@@ -254,7 +281,29 @@ function parse_energy_table(input_file_path)
     table
 end
 
-function parse_catmap_input(input_file_path)
+
+"""
+$(SIGNATURES) 
+
+Parse the content of a CatMAP input file needed for a Poisson-Nernst-Planck model.
+
+The input file is first interpreted by a Python interpreter and then parsed.
+The following information is used and must be specified:
+- rxn_expressions
+- prefactor_list
+- species_definitions (including ...)
+- input_file (including the energy table)
+- surface_names
+- bulk_ph
+- Upzc
+- potential_reference_scale
+- gas_thermo_mode
+- adsorbate_thermo_mode
+- electrochemical_thermo_mode
+See [CatMAP documentation](https://catmap.readthedocs.io/en/latest/index.html) for details.
+"""
+function parse_catmap_input(input_file_path::AbstractString)
+    @assert isfile(input_file_path)
     @pyinclude(input_file_path)
     
     reactions = ParsedReaction[]
@@ -266,7 +315,7 @@ function parse_catmap_input(input_file_path)
 
     species_definitions = py"species_definitions"
 
-    energies_file_path  = joinpath(dirname(input_file_path), py"input_file")
+    energies_file_path  = isabspath(py"input_file") ? py"input_file" : joinpath(dirname(input_file_path), py"input_file")
     energy_table        = parse_energy_table(energies_file_path)
 
     surface_name = let 
@@ -296,13 +345,17 @@ function parse_catmap_input(input_file_path)
 end
 
 
-# for each species included in the reactions
-#   1. check that there exists an entry in species_defs
-#   2. determine the type of the species
-#   3a. if type == gas, complete species_def by using energy table
-#   3b. if type == adsorbate, then determine the site, for each surface complete species_def by using energy table
-#   3c. if type == tstate, then do same as for adsorbate
-#   3d. if type == fictious, then ...
+const re_fictious_gas   = r"^(?<species_name>ele|OH)_g$"
+const re_gas            = r"^(?<species_name>[A-Za-z0-9]+)_g$"
+const re_adsorbate      = r"^(?<species_name>[A-Za-z0-9]+)_(?<site>[^g])$"
+const re_site           = r"^_(?<site>[^g])$"
+const re_tstate         = r"^(?<species_name>[A-Za-z0-9\-]+)_(?<site>[^g])$"
+
+"""
+$(SIGNATURES) 
+
+Collect the specifications of all reactants in a list.
+"""
 function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_table, surface_name)
     @local_unitfactors μA cm
     # collect all species in a set
@@ -313,10 +366,10 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
     end
     species_list = Dict{String, AbstractSpecies}()
     for s in species
-        match_fictious  = match(r"^(?<species_name>ele|OH)_g$", s)
-        match_gas       = match(r"^(?<species_name>[A-Za-z0-9]+)_g$", s)
-        match_adsorbate = match(r"^(?<species_name>[A-Za-z0-9]+)_(?<site>[^g])$", s)
-        match_site      = match(r"^_(?<site>[^g])$", s)
+        match_fictious  = match(re_fictious_gas,s)
+        match_gas       = match(re_gas,         s)
+        match_adsorbate = match(re_adsorbate,   s)
+        match_site      = match(re_site,        s)
         if !isnothing(match_fictious)
             species_name            = match_fictious[:species_name]
             (; pressure)            = findspecies(species_name, "g", species_defs)
@@ -350,7 +403,7 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
         if isnothing(tstate)
             continue
         end
-        match_tstate = match(r"^(?<species_name>[A-Za-z0-9\-]+)_(?<site>[^g])$", tstate.symbol)
+        match_tstate = match(re_tstate, tstate.name)
         if !isnothing(match_tstate)
             species_name                        = match_tstate[:species_name]
             site                                = match_tstate[:site]
@@ -360,9 +413,9 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
             (; site_names)                      = findspecies("", site, species_defs)
             site_name                           = site_names[1]
             (; formation_energy, frequencies)   = findspecies(species_name, energy_table; surface_name, site_name)
-            species_list[tstate.symbol]         = TStateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params, β=tstate.beta, between_species=[first.(educts); first.(products)])
+            species_list[tstate.name]         = TStateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params, β=tstate.beta, between_species=[first.(educts); first.(products)])
         else
-            throw(ArgumentError("$(tstate.symbol) is not a valid transition state"))
+            throw(ArgumentError("$(tstate.name) is not a valid transition state"))
         end
     end
     # special case to make sure that H2_g and H2O_g are contained in the list
@@ -396,6 +449,11 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
     species_list
 end
 
+"""
+$(SIGNATURES) 
+
+Extract specification of a species at a given site from the species_defs of a CatMAP input file.
+"""
 function findspecies(species_name::AbstractString, site::AbstractString, species_defs)
     species = isempty(species_name) ? site : "$(species_name)_$(site)"
     try
@@ -409,6 +467,11 @@ function findspecies(species_name::AbstractString, site::AbstractString, species
     end
 end
 
+"""
+$(SIGNATURES) 
+
+Extract specification of a species from an energy table.
+"""
 function findspecies(species_name::AbstractString, energy_table; surface_name="None", site_name="gas")
     found = nothing
     for row in energy_table

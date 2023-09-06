@@ -1,5 +1,5 @@
 """
-    ratelaw_TS(prefactor, Gf_IS, Gf_TS, T, activprod)
+$(SIGNATURES)
 
 Computes the rate of an elementary reaction that passes through a transition state.
 
@@ -12,6 +12,11 @@ function ratelaw_TS(prefactor, Gf_IS, Gf_TS, T, activprod)
     prefactor * exp(-(Gf_TS - Gf_IS) / (k_B * T)) * activprod
 end
 
+"""
+$(SIGNATURES)
+
+Compute the Gibbs free energies of all species specified in the `catmap_params` by applying the specified correction modes.
+"""
 function compute_free_energies!(free_energies, catmap_params::CatmapParams, σ, ϕ_we, ϕ, local_pH)
     (; gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode) = catmap_params
 
@@ -31,6 +36,19 @@ function compute_free_energies!(free_energies, catmap_params::CatmapParams, σ, 
     nothing
 end
 
+
+"""
+$(SIGNATURES)
+
+Create a [ReactionSystem](https://docs.sciml.ai/Catalyst/stable/api/catalyst_api/#Catalyst.ReactionSystem) for the specified microkinetic model.
+
+For each elementary reaction the [`CatmapInterface.ratelaw_TS`](@ref) is used.
+No separate rate equations for the solvent (= H₂O) and the active sites are created but their activities can be specified as parameters.
+For ficitious gases (OH⁻ and H⁺) and adsorbates the activity coefficients are assumed to be 1.
+The activity coefficients of the gaseous species can specified as parameters.
+The thermodynamical corrections to the DFT-data of the formation energies are applied according to the specified modes.
+New modes can be added by the user by adding a function with the same name to the module. 
+"""
 function create_reaction_network(catmap_params::CatmapParams)
     (; species_list, T) = catmap_params
 
@@ -102,7 +120,7 @@ function create_reaction_network(catmap_params::CatmapParams)
             end
             Gf_FS += factor * free_energies[product]
         end
-        Gf_TS = isnothing(tstate) ? max(Gf_IS, Gf_FS) : free_energies[tstate.symbol]
+        Gf_TS = isnothing(tstate) ? max(Gf_IS, Gf_FS) : free_energies[tstate.name]
         rxn_f = Reaction(ratelaw_TS(prefactor, Gf_IS, Gf_TS, T, af), es, ps, αs, βs; only_use_rate=true)
         rxn_r = Reaction(ratelaw_TS(prefactor, Gf_FS, Gf_TS, T, ar), ps, es, βs, αs; only_use_rate=true)
         push!(rxs, rxn_f)
@@ -111,7 +129,12 @@ function create_reaction_network(catmap_params::CatmapParams)
     ReactionSystem(rxs, t, name = :microkinetics)
 end
 
-function generate_function(rn::ReactionSystem, dvs, ps)
+"""
+$(SIGNATURES)
+
+Generate a mutating function from a `ReactionSystem` that computes the concentration fluxes due to the reaction.
+"""
+function generate_function(rn::ReactionSystem, dvs::Vector{Tval}, ps::Vector{Tval}) where {Tval <: Union{SymbolicUtils.BasicSymbolic{Real}, Num}}
     @assert Set(dvs) == Set(species(rn))
     @assert Set(ps)  == Set(parameters(rn))
 
@@ -120,8 +143,8 @@ function generate_function(rn::ReactionSystem, dvs, ps)
     eqs = equations(sys)
     rhss = [-1 * eqs[species_map[dv]].rhs for dv in dvs] # multiply by -1 because the orientation assumed in VoronoiFVM physics functions
 
-    u = map(x -> ModelingToolkit.time_varying_as_func(ModelingToolkit.value(x), sys), dvs)
-    p = map(x -> ModelingToolkit.time_varying_as_func(ModelingToolkit.value(x), sys), ps)
+    u = map(x -> ModelingToolkit.time_varying_as_func(Symbolics.value(x), sys), dvs)
+    p = map(x -> ModelingToolkit.time_varying_as_func(Symbolics.value(x), sys), ps)
     t = ModelingToolkit.get_iv(sys)
 
     pre, sol_states = ModelingToolkit.get_substitutions_and_solved_states(sys, no_postprocess = false)
