@@ -357,7 +357,7 @@ $(SIGNATURES)
 Collect the specifications of all reactants in a list.
 """
 function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_table, surface_name)
-    @local_unitfactors μA cm
+    @local_unitfactors μA cm mol m Pa
     henry_consts = py"henry_consts"
     # collect all species in a set
     species = Set{String}()
@@ -381,7 +381,7 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
             species_name                        = match_gas[:species_name]
             (; pressure)                        = findspecies(species_name, "g", species_defs)
             (; formation_energy, frequencies)   = findspecies(species_name, energy_table)
-            henry_const                         = get(henry_consts, species_name, missing)
+            henry_const                         = get(henry_consts, species_name, missing) * mol/(m^3 * Pa)
             species_list[s]                     = GasSpecies(; species_name, formation_energy, pressure, frequencies, henry_const)
         elseif !isnothing(match_adsorbate)
             species_name                        = match_adsorbate[:species_name]
@@ -431,7 +431,7 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
                 throw(e)
             end
         else
-            henry_const = get(henry_consts, "H2", missing)
+            henry_const = get(henry_consts, "H2", missing) * mol/(m^3 * Pa)
             species_list["H2_g"] = GasSpecies(; species_name="H2", formation_energy, pressure, frequencies, henry_const) 
         end
     end
@@ -445,7 +445,7 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
                 throw(e)
             end
         else
-            henry_const = get(henry_consts, "H2O", missing)
+            henry_const = get(henry_consts, "H2O", missing) * mol/(m^3 * Pa)
             species_list["H2O_g"] = GasSpecies(; species_name="H2O", formation_energy, pressure, frequencies, henry_const) 
         end
     end

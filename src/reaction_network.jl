@@ -75,6 +75,7 @@ function create_reaction_network(catmap_params::CatmapParams)
     end
 
     function process_reaction_side(reactants)
+        @local_unitfactors mol dm
         Gf = Num(0.0)
         rs = Num[]
         γs = Int[]
@@ -89,7 +90,7 @@ function create_reaction_network(catmap_params::CatmapParams)
             elseif isa(sp, AdsorbateSpecies) # activity coefficients are assumed to be 1
                 push!(rs, vars[reactant])
                 push!(γs, factor)
-                a *= vars[reactant]^factor
+                a *= (vars[reactant])^factor
             elseif (isa(sp, GasSpecies) && reactant ≠ "H2O_g")
                 push!(rs, vars[reactant])
                 push!(γs, factor)
@@ -143,7 +144,7 @@ function liquidize(odesys::ODESystem, catmap_params::CatmapParams)
 
     new_eqs = Equation[]
     for eq in equations(odesys)
-        lhs = expand_derivatives(substitute(eq.lhs, Dict(csubs)))
+        lhs = expand_derivatives(substitute(eq.lhs, Dict(usubs)))
         rhs = substitute(eq.rhs, Dict(csubs..., psubs...))
         push!(new_eqs, Equation(lhs, rhs))
     end

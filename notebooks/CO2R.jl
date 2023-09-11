@@ -147,8 +147,8 @@ begin
 
 	const species_dict_catmap = Dict(
 		"OH_g" => iohminus,
-		"CO2_g" => ico2,
-		"CO_g" => ico,
+		"CO2_aq" => ico2,
+		"CO_aq" => ico,
 		"CO_t" => ico_t,
 		"COOH_t" => icooh_t,
 		"CO2_t" => ico2_t,
@@ -216,9 +216,9 @@ begin
 	end
 	odesys_buffer = convert(ODESystem, buffer_rn; combinatoric_ratelaws=false)
 	const f_buffer! = CatmapInterface.generate_function(
-		buffer_rn, 
-		[H⁺, HCO₃⁻, CO₃²⁻, CO₂, OH⁻], 
-		[γH⁺, γHCO₃⁻, γCO₃²⁻, γCO₂, γOH⁻]
+		buffer_rn; 
+		dvs = [H⁺, HCO₃⁻, CO₃²⁻, CO₂, OH⁻], 
+		ps  = [γH⁺, γHCO₃⁻, γCO₃²⁻, γCO₂, γOH⁻]
 	)
 	latexify(buffer_rn)
 end
@@ -288,13 +288,14 @@ $*CO_{(ad)} \rightleftharpoons CO_{(aq)} + *$
 begin
 	catmap_params 		= parse_catmap_input("./catmap_CO2R_template.mkm")
 	rn 					= create_reaction_network(catmap_params)
-	vars = species(rn)
-	const f_microkinetics! 	= CatmapInterface.generate_function(
-		rn, 
-		sort(vars, by=x->species_dict_catmap[string(operation(x))]), 
-		Catalyst.parameters(rn)
-	)
 	odesys 				= convert(ODESystem, rn; combinatoric_ratelaws=false)
+	odesys 				= CatmapInterface.liquidize(odesys, catmap_params)
+	vars 				= states(odesys)
+	const f_microkinetics! 	= CatmapInterface.generate_function(
+		odesys;
+		dvs= sort(vars, by=x->species_dict_catmap[string(operation(x))])
+	)
+	
 	@show Catalyst.parameters(odesys)
 	latexify(odesys)
 end
@@ -330,9 +331,9 @@ begin
 			data
 		) where {Tval, Tv, Tc, Tp, Ti}
 		(; ip, iϕ, v0, v, M0, M, κ, RT, nc, pscale, p_bulk, ϕ_we) = data
-		p = u[ip] * pscale-p_bulk
+		# p = u[ip] * pscale-p_bulk
 
-		c0, bar_c = c0_barc(u, data)
+		# c0, bar_c = c0_barc(u, data)
 
 		# γ_co2 = let 
 		# 	Mrel = M[ico2] / M0
@@ -355,21 +356,21 @@ begin
 		
 		ps 	  = get_tmp(ps_cache, u[iϕ])
 		ps[1] = a_t
-		ps[2] = 1.0/(1-v[ikplus]*u[ikplus]/(mol/dm^3)) /Hcp_CO2/bar *mol/dm^3 # γ_co2
+		ps[2] = 1.0/(1-v[ikplus]*u[ikplus]/(mol/dm^3)) # γ_co2
 		ps[3] = σ
 		ps[4] = aH₂O
 		ps[5] = u[iϕ]
 		ps[6] = ϕ_we
 		ps[7] = local_pH
-		ps[8] = 1.0/(1-v[ikplus]*u[ikplus]/(mol/dm^3)) /Hcp_CO/bar *mol/dm^3# γ_co
+		ps[8] = 1.0/(1-v[ikplus]*u[ikplus]/(mol/dm^3)) # γ_co
 
-		us = get_tmp(us_cache, u[ico_t])
-		@. us = u[isurfacestart: isurfaceend] / (mol/dm^3)
+		#us = get_tmp(us_cache, u[ico_t])
+		#@. us = u[isurfacestart: isurfaceend] / (mol/dm^3)
 		
 		@views f_microkinetics!(
 			f[isurfacestart:isurfaceend], 
-			#u[isurfacestart:isurfaceend],
-			us,
+			u[isurfacestart:isurfaceend],
+			#us,
 			ps,
 			nothing
 		)
