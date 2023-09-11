@@ -72,3 +72,19 @@ def generate_hbond_dict():
     return d
 
 hbond_dict = generate_hbond_dict()
+
+#Atmos. Chem. Phys., 15, 4399–4981, 2015
+henry_consts = {  # mol/m^3/Pa
+    "CH4"       : 1.4e-5,
+    "C2H6"      : 1.9e-5,
+    "CH3OH"     : 2.0,
+    "CH3CH2OH"  : 1.9,
+    "CO"        : 9.7e-6,
+    "CO2"       : 3.3e-4,
+    "N2"        : 6.4e-6,
+    "H2"        : 7.8e-6,
+    "NH3"       : 5.9e-1,
+    "O2"        : 1.2e-5,
+    "CH2O"      : 3.2e1,
+    "NO"        : 1.9e-5,
+}

@@ -55,14 +55,20 @@ struct GasSpecies <: AbstractSpecies
     Normal modes of vibration of the species in m⁻¹
     """
     frequencies::Vector{Float64}
-    function GasSpecies(; species_name, formation_energy, pressure, frequencies)
+    """
+    """
+    henry_const::Union{Float64, Missing}
+    function GasSpecies(; species_name, formation_energy, pressure, frequencies, henry_const)
         if pressure < 0.0
             throw(DomainError("pressure must be nonnegative"))
         end
         if any(frequencies .<= 0.0)
             throw(DomainError("all frequencies must be positive"))
         end
-        new(species_name, formation_energy, pressure, frequencies)
+        if !ismissing(henry_const) && henry_const <= 0.0
+            throw(DomainError("Henry constant must be positive"))
+        end
+        new(species_name, formation_energy, pressure, frequencies, henry_const)
     end
 end
 

@@ -358,6 +358,7 @@ Collect the specifications of all reactants in a list.
 """
 function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_table, surface_name)
     @local_unitfactors μA cm
+    henry_consts = py"henry_consts"
     # collect all species in a set
     species = Set{String}()
     for (; educts, products, tstate) in reactions
@@ -380,7 +381,8 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
             species_name                        = match_gas[:species_name]
             (; pressure)                        = findspecies(species_name, "g", species_defs)
             (; formation_energy, frequencies)   = findspecies(species_name, energy_table)
-            species_list[s]                     = GasSpecies(; species_name, formation_energy, pressure, frequencies)
+            henry_const                         = get(henry_consts, species_name, missing)
+            species_list[s]                     = GasSpecies(; species_name, formation_energy, pressure, frequencies, henry_const)
         elseif !isnothing(match_adsorbate)
             species_name                        = match_adsorbate[:species_name]
             site                                = match_adsorbate[:site]
@@ -429,7 +431,8 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
                 throw(e)
             end
         else
-            species_list["H2_g"] = GasSpecies(; species_name="H2", formation_energy, pressure, frequencies) 
+            henry_const = get(henry_consts, "H2", missing)
+            species_list["H2_g"] = GasSpecies(; species_name="H2", formation_energy, pressure, frequencies, henry_const) 
         end
     end
     if !haskey(species_list, "H2O_g")
@@ -442,7 +445,8 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
                 throw(e)
             end
         else
-            species_list["H2O_g"] = GasSpecies(; species_name="H2O", formation_energy, pressure, frequencies) 
+            henry_const = get(henry_consts, "H2O", missing)
+            species_list["H2O_g"] = GasSpecies(; species_name="H2O", formation_energy, pressure, frequencies, henry_const) 
         end
     end
     @assert haskey(species_list, "H2_g") && haskey(species_list, "H2O_g")
