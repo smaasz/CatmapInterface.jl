@@ -73,53 +73,38 @@ function create_reaction_network(catmap_params::CatmapParams)
             activ_coefs[s]  = first(@parameters $gs)
         end
     end
+
+    function process_reaction_side(reactants)
+        @local_unitfactors mol dm
+        Gf = Num(0.0)
+        rs = Num[]
+        γs = Int[]
+        a  = Num(1.0)
+        for (reactant, factor) in reactants
+            sp = species_list[reactant]
+            if (reactant =="H2O_g" || isa(sp, SiteSpecies))
+                a *= vars[reactant]^factor
+            elseif (isa(sp, FictiousSpecies) && reactant ≠ "ele_g") # activity is assumed 1 b/c their influence is in rate constant
+                push!(rs, vars[reactant])
+                push!(γs, factor)
+            elseif isa(sp, AdsorbateSpecies) # activity coefficients are assumed to be 1
+                push!(rs, vars[reactant])
+                push!(γs, factor)
+                a *= (vars[reactant])^factor
+            elseif (isa(sp, GasSpecies) && reactant ≠ "H2O_g")
+                push!(rs, vars[reactant])
+                push!(γs, factor)
+                a *= (activ_coefs[reactant] * vars[reactant])^factor
+            end
+            Gf += factor * free_energies[reactant]
+        end
+        Gf, rs, γs, a
+    end
+
     rxs = Reaction[]
     for ((; educts, products, tstate), prefactor) in zip(catmap_params.reactions, catmap_params.prefactors)
-        Gf_IS = Num(0.0)
-        Gf_FS = Num(0.0)
-        Gf_TS = Num(0.0)
-        es = Num[]
-        αs = Int[]
-        ps = Num[]
-        βs = Int[]
-        af = Num(1.0)
-        ar = Num(1.0)
-        for (educt, factor) in educts
-            sp = species_list[educt]
-            if (educt =="H2O_g" || isa(sp, SiteSpecies))
-                af *= vars[educt]^factor
-            elseif (isa(sp, FictiousSpecies) && educt ≠ "ele_g") # activity is assumed 1 b/c their influence is in rate constant
-                push!(es, vars[educt])
-                push!(αs, factor)
-            elseif isa(sp, AdsorbateSpecies) # activity coefficients are assumed to be 1
-                push!(es, vars[educt])
-                push!(αs, factor)
-                af *= vars[educt]^factor
-            elseif (isa(sp, GasSpecies) && educt ≠ "H2O_g")
-                push!(es, vars[educt])
-                push!(αs, factor)
-                af *= (activ_coefs[educt] * vars[educt])^factor
-            end
-            Gf_IS += factor * free_energies[educt]
-        end
-        for (product, factor) in products
-            sp = species_list[product]
-            if (product =="H2O_g" || isa(sp, SiteSpecies))
-                ar *= vars[product]^factor
-            elseif (isa(sp, FictiousSpecies) && product ≠ "ele_g") # activity is assumed 1 b/c their influence is in rate constant
-                push!(ps, vars[product])
-                push!(βs, factor)
-            elseif isa(sp, AdsorbateSpecies) # activity coefficients are assumed to be 1
-                push!(ps, vars[product])
-                push!(βs, factor)
-                ar *= vars[product]^factor
-            elseif (isa(sp, GasSpecies) && product ≠ "H2O_g")
-                push!(ps, vars[product])
-                push!(βs, factor)
-                ar *= (activ_coefs[product] * vars[product])^factor
-            end
-            Gf_FS += factor * free_energies[product]
-        end
+        (Gf_IS, es, αs, af) = process_reaction_side(educts)
+        (Gf_FS, ps, βs, ar) = process_reaction_side(products)
         Gf_TS = isnothing(tstate) ? max(Gf_IS, Gf_FS) : free_energies[tstate.name]
         rxn_f = Reaction(ratelaw_TS(prefactor, Gf_IS, Gf_TS, T, af), es, ps, αs, βs; only_use_rate=true)
         rxn_r = Reaction(ratelaw_TS(prefactor, Gf_FS, Gf_TS, T, ar), ps, es, βs, αs; only_use_rate=true)
@@ -132,9 +117,51 @@ end
 """
 $(SIGNATURES)
 
+Transform the (micro-)kinetic model from surface/gas-reactions to surface/electrolyte-reactions using Henry's law.
+"""
+function liquidize(odesys::ODESystem, catmap_params::CatmapParams)
+    @local_unitfactors bar
+    (; species_list) = catmap_params
+
+    sts     = states(odesys)
+    ps      = parameters(odesys)
+
+    usubs = Pair{SymbolicUtils.BasicSymbolic{Real}, SymbolicUtils.BasicSymbolic{Real}}[]
+    csubs = Pair{Num, Num}[]
+    psubs = Pair{SymbolicUtils.BasicSymbolic{Real}, SymbolicUtils.BasicSymbolic{Real}}[]
+    @variables t
+    for st in sts
+        sp = species_list[string(Symbolics.operation(Symbolics.value(st)))]
+        if isa(sp, GasSpecies)
+            (; henry_const) = sp
+            ss          = Symbol("$(sp.species_name)_aq")
+            var         = first(@variables $ss(t))
+            push!(usubs, st => Symbolics.value(var))
+            push!(csubs, st => var / henry_const / bar)
+
+            gs          = Symbol("γ$(sp.species_name)_aq")
+            activ_coef  = first(@parameters $gs)
+            p = getproperty(odesys, Symbol("γ$(sp.species_name)_g"); namespace=false)
+            p = Symbolics.value(p)
+            push!(psubs, p => Symbolics.value(activ_coef))
+        end
+    end
+
+    new_eqs = Equation[]
+    for eq in equations(odesys)
+        lhs = expand_derivatives(substitute(eq.lhs, Dict(usubs)))
+        rhs = substitute(eq.rhs, Dict(csubs..., psubs...))
+        push!(new_eqs, Equation(lhs, rhs))
+    end
+    structural_simplify(ODESystem(new_eqs, t, replace(sts, usubs...), replace(ps, psubs...); name=odesys.name))
+end
+
+"""
+$(SIGNATURES)
+
 Generate a mutating function from a `ReactionSystem` that computes the concentration fluxes due to the reaction.
 """
-function generate_function(rn::ReactionSystem, dvs::Vector{Tval}, ps::Vector{Tval}) where {Tval <: Union{SymbolicUtils.BasicSymbolic{Real}, Num}}
+function generate_function(rn::ReactionSystem; dvs::Vector{Tval}=species(rn), ps::Vector{Tval}=parameters(rn)) where {Tval <: Union{SymbolicUtils.BasicSymbolic{Real}, Num}}
     @assert Set(dvs) == Set(species(rn))
     @assert Set(ps)  == Set(parameters(rn))
 
@@ -142,6 +169,31 @@ function generate_function(rn::ReactionSystem, dvs::Vector{Tval}, ps::Vector{Tva
     sys = convert(ODESystem, rn; combinatoric_ratelaws=false)
     eqs = equations(sys)
     rhss = [-1 * eqs[species_map[dv]].rhs for dv in dvs] # multiply by -1 because the orientation assumed in VoronoiFVM physics functions
+
+    u = map(x -> ModelingToolkit.time_varying_as_func(Symbolics.value(x), sys), dvs)
+    p = map(x -> ModelingToolkit.time_varying_as_func(Symbolics.value(x), sys), ps)
+    t = ModelingToolkit.get_iv(sys)
+
+    pre, sol_states = ModelingToolkit.get_substitutions_and_solved_states(sys, no_postprocess = false)
+
+    f_expr = build_function(rhss, u, p, t; postprocess_fbody = pre, states = sol_states)[2]
+    drop_expr(@RuntimeGeneratedFunction(@__MODULE__, f_expr))
+end
+
+"""
+$(SIGNATURES)
+
+Generate a mutating function from a `ODESystem` that computes the concentration fluxes due to the reaction.
+"""
+function generate_function(sys::ODESystem; dvs=states(sys), ps=parameters(sys))
+    @assert Set(dvs) == Set(states(sys))
+    @assert Set(ps)  == Set(parameters(sys))
+
+
+    #state_map = Dict(zip(states(sys), length(states(sys))))
+    state_map = Dict([st => i for (i, st) in enumerate(states(sys))])
+    eqs = equations(sys)
+    rhss = [-1 * eqs[state_map[dv]].rhs for dv in dvs] # multiply by -1 because the orientation assumed in VoronoiFVM physics functions
 
     u = map(x -> ModelingToolkit.time_varying_as_func(Symbolics.value(x), sys), dvs)
     p = map(x -> ModelingToolkit.time_varying_as_func(Symbolics.value(x), sys), ps)
