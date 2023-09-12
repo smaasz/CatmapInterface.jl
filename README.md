@@ -24,9 +24,9 @@ julia> import Pkg; Pkg.add("https://github.com/smaasz/CatmapInterface.jl")
 - [**DEVEL**][docs-dev-url] &mdash; *documentation of the in-development version.*
 
 
-[docs-dev-img] : https://img.shields.io/badge/docs-dev-blue.svg
-[docs-dev-url] : https://smaasz.github.io/CatmapInterface.jl/dev/
+[docs-dev-img]: https://img.shields.io/badge/docs-dev-blue.svg
+[docs-dev-url]: https://smaasz.github.io/CatmapInterface.jl/dev/
 
-[GHA-img] : https://github.com/smaasz/CatmapInterface.jl/actions/workflows/CI.yml/badge.svg?branch=main
-[GHA-url] : https://github.com/smaasz/CatmapInterface.jl/actions/workflows/CI.yml?query=branch%3Amain
+[GHA-img]: https://github.com/smaasz/CatmapInterface.jl/actions/workflows/CI.yml/badge.svg?branch=main
+[GHA-url]: https://github.com/smaasz/CatmapInterface.jl/actions/workflows/CI.yml?query=branch%3Amain
 
