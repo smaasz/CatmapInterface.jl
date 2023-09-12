@@ -22,4 +22,5 @@ SiteSpecies
 ```@docs
 create_reaction_network
 CatmapInterface.generate_function(::ReactionSystem, ::Vector{Num}, ::Vector{Num})
+liquidize
 ```

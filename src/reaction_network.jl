@@ -114,6 +114,11 @@ function create_reaction_network(catmap_params::CatmapParams)
     ReactionSystem(rxs, t, name = :microkinetics)
 end
 
+"""
+$(SIGNATURES)
+
+Transform the (micro-)kinetic model from surface/gas-reactions to surface/electrolyte-reactions using Henry's law.
+"""
 function liquidize(odesys::ODESystem, catmap_params::CatmapParams)
     @local_unitfactors bar
     (; species_list) = catmap_params
