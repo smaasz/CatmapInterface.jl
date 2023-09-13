@@ -4,6 +4,10 @@ using Catalyst
 using DelimitedFiles
 using PyCall
 
+if haskey(ENV, "CATMAP")
+    pushfirst!(pyimport("sys")."path", ENV["CATMAP"])
+end
+
 const eV = 1.602176634e-19
 
 # The following python code block defines a function to extract the free energies of all reactants given a CatMAP input file

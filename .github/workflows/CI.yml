@@ -41,13 +41,10 @@ jobs:
       - name: Install CatMAP dependencies
         env:
           PYTHON: ""
-          CATMAP: "$GITHUB_WORKSPACE/catmap-1"
         run: |
           julia --project=test -e '
             using Pkg
             Pkg.instantiate()
-            using PyCall
-            pushfirst!(pyimport("sys")."path", ENV["CATMAP"])
             using Conda
             Conda.add("mpmath")
             Conda.add("numpy")
@@ -56,6 +53,7 @@ jobs:
       - uses: julia-actions/julia-runtest@v1
         env:
           PYTHON: ""
+          CATMAP: "$GITHUB_WORKSPACE/catmap-1"
   docs:
     name: Documentation
     runs-on: ubuntu-latest
