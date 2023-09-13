@@ -7,13 +7,13 @@ $(TYPEDFIELDS)
 """
 @kwdef struct TState
     """
-    Name of the transition state
+    List of transition states stored as a pair of the name and stoichiometric factor
     """
-    name::String
+    components::Vector{Pair{String, Int}}
     """
     Transfer coefficient of the transition state
     """
-    beta::Float64
+    beta::Union{Nothing, Float64}
 end
 
 """
@@ -129,7 +129,7 @@ end
 
 
 const re_reactant_sum  = r"^(?:[^+]+)(?:\+[^+]+)*$"
-const re_reactant      = r"^(?<factor>[1-9][0-9]*)?(?<species>[A-Za-z0-9]*)\*?_(?<site>[a-z])$"
+const re_reactant      = r"^(?<factor>[1-9][0-9]*)?(?<species>[A-Za-z0-9\-]*)\*?_(?<site>[a-z])$"
 """
 $(SIGNATURES) 
 
@@ -156,8 +156,8 @@ function parse_reactant_sum(rs::AbstractString)
 end
 
 
-const re_rxn            = r"^(?<educts>[^<>]+)<->(?<products>[^<>]+)$"
-const re_rxn_with_TS    = r"^(?<educts>[^<>]+)<->(?<tstate>[^<>]+)<->(?<products>[^<>]+);beta=(?<beta>[0-9.]+)$"
+const re_rxn            = r"^(?<educts>[^<>]+)<?->(?<products>[^<>]+)$"
+const re_rxn_with_TS    = r"^(?<educts>[^<>]+)<->(?<tstate>[^<>]+)<?->(?<products>[^<>;]+)(?:;beta=(?<beta>[0-9.]+))?$"
 """
 $(SIGNATURES) 
 
@@ -173,7 +173,7 @@ julia> CatmapInterface.parse_reaction("COOH*_t + H2O_g + ele_g <-> COOH-H2O-ele_
 CatmapInterface.ParsedReaction(["COOH_t" => 1, "H2O_g" => 1, "ele_g" => 1], ["CO_t" => 1, "H2O_g" => 1, "OH_g" => 1, "_t" => 1], CatmapInterface.TState("COOH-H2O-ele_t", 0.5))
 ```
 """
-function parse_reaction(r::AbstractString)
+function parse_reaction(r::AbstractString; beta=nothing)
     r = remove_whitespaces(r)
     
     match_rxn           = match(re_rxn, r)
@@ -186,16 +186,21 @@ function parse_reaction(r::AbstractString)
         educts      = parse_reactant_sum(match_rxn[:educts])
         products    = parse_reactant_sum(match_rxn[:products]) 
     elseif !isnothing(match_rxn_with_TS)
-        educts      = parse_reactant_sum(match_rxn_with_TS[:educts])
-        products    = parse_reactant_sum(match_rxn_with_TS[:products])
-        beta = 0.0
-        try
-            beta = parse(Float64, match_rxn_with_TS[:beta])    
-        catch e
-            throw(ArgumentError("$(match_rxn_with_TS[:beta]) is not a valid float"))
-        end
-        
-        tstate = TState(name=match_rxn_with_TS[:tstate], beta=beta)
+        educts            = parse_reactant_sum(match_rxn_with_TS[:educts])
+        products          = parse_reactant_sum(match_rxn_with_TS[:products])
+        tstate_components = parse_reactant_sum(match_rxn_with_TS[:tstate])
+        if isnothing(match_rxn_with_TS[:beta])
+            if isnothing(beta)
+                throw(ArgumentError("The option beta=... has to be specified because no default for beta is specified"))
+            end
+        else
+            try
+                beta = parse(Float64, match_rxn_with_TS[:beta])    
+            catch e
+                throw(ArgumentError("$(match_rxn_with_TS[:beta]) is not a valid float"))
+            end
+        end        
+        tstate = TState(components=tstate_components, beta=beta)
     else
         throw(ArgumentError("$r is not a valid reaction equation"))
     end
@@ -236,20 +241,34 @@ The following are recognized (the order of the columns does not matter):
 function parse_energy_table(input_file_path)
     @local_unitfactors eV cm
     (dc, dh) = readdlm(input_file_path, '\t', String; header=true)
-    entry_types = [
+    required_entry_types = Dict(
         :surface_name      => String, 
         :site_name         => String,
         :species_name      => String,
         :formation_energy  => Float64, #in J/mole
-        :bulk_structure    => String,
         :frequencies       => Vector{Float64}, # in m⁻¹
-        :other_parameters  => Vector{String},
         :reference         => String,
-    ]
-    if !(dh[1,:] == string.(first.(entry_types)))
-        throw(ArgumentError("headers are not valid"))
+    )
+    optional_entry_types = Dict(
+        :bulk_structure    => String,
+        :other_parameters  => Vector{String},
+    )
+    entry_types = Pair{Symbol, Any}[]
+    for header in dh[1,:]
+        header_sym = Symbol(header)
+        if header_sym in keys(required_entry_types)
+            push!(entry_types, header_sym => required_entry_types[header_sym])
+        elseif header_sym in keys(optional_entry_types)
+            push!(entry_types, header_sym => optional_entry_types[header_sym])
+        else
+            throw(ArgumentError("$header is not a valid column header"))
+        end
     end
-
+    for required_entry in keys(required_entry_types)
+        if required_entry ∉ first.(entry_types)
+            throw(ArgumentError("The energy table must contain $required_entry entries"))
+        end
+    end
 
     TRow = NamedTuple{(first.(entry_types)...,), Tuple{last.(entry_types)...}}
     table = TRow[]
@@ -306,9 +325,18 @@ function parse_catmap_input(input_file_path::AbstractString)
     @assert isfile(input_file_path)
     @pyinclude(input_file_path)
     
+    beta = 
+    try
+        py"beta"
+    catch e
+        if !isa(e, PyCall.PyError) # if no default for beta is specified, it must be given as option for every reaction with TS
+            rethrow(e)
+        end
+    end
+
     reactions = ParsedReaction[]
     for r in py"rxn_expressions"
-        push!(reactions, parse_reaction(r))
+        push!(reactions, parse_reaction(r; beta))
     end
 
     prefactors = py"prefactor_list"
@@ -331,7 +359,7 @@ function parse_catmap_input(input_file_path::AbstractString)
 
     bulk_pH = py"bulk_ph"
     
-    Upzc                        = py"Upzc"
+    Upzc                        = py"extrapolated_potential"#py"Upzc"
     potential_reference_scale   = py"potential_reference_scale"
 
     
@@ -405,19 +433,27 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
         if isnothing(tstate)
             continue
         end
-        match_tstate = match(re_tstate, tstate.name)
-        if !isnothing(match_tstate)
-            species_name                        = match_tstate[:species_name]
-            site                                = match_tstate[:site]
-            (; sigma_params)                    = findspecies(species_name, site, species_defs)
-            sigma_params                        = (; a = sigma_params[2] / (μA/cm^2), b = sigma_params[1] / (μA/cm^2)^2)
-            coverage                            = 0.0
-            (; site_names)                      = findspecies("", site, species_defs)
-            site_name                           = site_names[1]
-            (; formation_energy, frequencies)   = findspecies(species_name, energy_table; surface_name, site_name)
-            species_list[tstate.name]         = TStateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params, β=tstate.beta, between_species=[first.(educts); first.(products)])
-        else
-            throw(ArgumentError("$(tstate.name) is not a valid transition state"))
+        for component in first.(tstate.components)
+            if component ∈ species
+                if !isa(species_list[component], SiteSpecies)
+                    throw(ArgumentError("A transition state can only consist of an activated complex of free sites but $component is a $(typeof(species_list[component]))"))
+                end
+            else
+                match_tstate = match(re_tstate, component)
+                if !isnothing(match_tstate)
+                    species_name                        = match_tstate[:species_name]
+                    site                                = match_tstate[:site]
+                    (; sigma_params)                    = findspecies(species_name, site, species_defs)
+                    sigma_params                        = (; a = sigma_params[2] / (μA/cm^2), b = sigma_params[1] / (μA/cm^2)^2)
+                    coverage                            = 0.0
+                    (; site_names)                      = findspecies("", site, species_defs)
+                    site_name                           = site_names[1]
+                    (; formation_energy, frequencies)   = findspecies(species_name, energy_table; surface_name, site_name)
+                    species_list[component]         = TStateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params, β=tstate.beta, between_species=[first.(educts); first.(products)])
+                else
+                    throw(ArgumentError("$(component) is not a valid transition state"))
+                end
+            end
         end
     end
     # special case to make sure that H2_g and H2O_g are contained in the list
