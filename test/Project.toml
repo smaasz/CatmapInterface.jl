@@ -1,5 +1,6 @@
 [deps]
 Catalyst = "479239e8-5488-4da2-87a7-35f2df7eef83"
+Conda = "8f4d0f93-b110-5947-807f-2305c1781a2d"
 DelimitedFiles = "8bb1440f-4735-579b-a4ab-409b98df4dab"
 PyCall = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
