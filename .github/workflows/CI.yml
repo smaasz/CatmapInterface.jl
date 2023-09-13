@@ -44,6 +44,7 @@ jobs:
           CATMAP: "$GITHUB_WORKSPACE/catmap-1"
         run: |
           julia --project=test -e '
+            using PyCall
             pushfirst!(pyimport("sys")."path", ENV["CATMAP"])
             using Conda
             Conda.add("mpmath", "mpmath")
