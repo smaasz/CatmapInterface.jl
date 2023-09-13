@@ -11,7 +11,7 @@ rxn_expressions = [
     'CO2*_t + H2O_g + ele_g <-> COOH*_t + OH_g',  #2
     'COOH*_t + H2O_g + ele_g <-> COOH-H2O-ele_t <-> CO*_t + H2O_g + OH_g + *_t; beta=0.5', #3
     'CO*_t <-> CO_g + *_t',	                      #4
-    #'H2_g <-> H2_g',                              #5
+    'H2_g <-> H2_g',                              #5
     #'H2O_g + ele_g <-> OH_g + H_g' #5?
 ]
 

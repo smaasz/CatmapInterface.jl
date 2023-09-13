@@ -2,10 +2,46 @@ using CatmapInterface
 using Test
 using Catalyst
 using DelimitedFiles
+using PyCall
 
 const eV = 1.602176634e-19
 
-function instantiate_catmap_template(template_file_path, σ, ϕ_we, ϕ, local_pH; ϕ_pzc=0.16, T=298.0)
+py"""
+from catmap import ReactionModel
+
+def catmap_kinetic_model(setup_file):
+
+    # ReactionModel is the main class that is initialized with a setup-file
+    model = ReactionModel(setup_file=setup_file)
+
+    # some solver parameters have to be set manually (?!)
+    import mpmath as mp
+    model.solver._mpfloat = mp.mpf
+    model.solver._math = mp
+    model.solver._matrix = mp.matrix
+
+    model.solver.compile() # compiles all templates, here (rate_constants) are needed
+
+    descriptor_values = [descriptor_range[0] for descriptor_range in model.descriptor_ranges]
+    
+    energies = {
+        k:v for k, v in zip(
+            model.adsorbate_names + model.transition_state_names,
+            model.scaler.get_rxn_parameters(descriptor_values)
+        )
+    }
+    for k, v in zip(model.gas_names, model.solver._gas_energies):
+        energies[k] = v
+    for k, v in zip(model.site_names, model.solver._site_energies):
+        energies[k] = v
+
+    return energies
+"""
+
+
+
+function instantiate_catmap_template(template_file_path, params)
+    (; σ, ϕ_we, ϕ, local_pH, ϕ_pzc, T) = params
     input_instance_string = open(template_file_path, "r") do template_file
         read(template_file, String)
     end
@@ -15,7 +51,7 @@ function instantiate_catmap_template(template_file_path, σ, ϕ_we, ϕ, local_pH
 		r"voltage_diff_drop.?=.*" => "voltage_diff_drop = $ϕ",
 		r"pH.?=.*" => "pH = $local_pH",
 		r"Upzc.?=.*" => "Upzc = $ϕ_pzc",
-		r"\nsigma_input.?=.*" => "\nsigma_input = $σ",
+		r"\nsigma_input.?=.*" => "\nsigma_input = $σ/0.01",
 	)
     input_instance_string = replace(input_instance_string, replacements...)
 
@@ -27,52 +63,70 @@ function instantiate_catmap_template(template_file_path, σ, ϕ_we, ϕ, local_pH
     return input_instance_file_name
 end
 
-function compare_catmap_output(catmap_output_path; rtol=1.0e-5)
-    (dc, dh) = readdlm(catmap_output_path, ',', Float64; header=true)
-    
-    function findparams(row)
-        ϕ_we        = row[findfirst(isequal("ϕ_we"), dh[1,:])]
-        ϕ           = row[findfirst(isequal("ϕ"), dh[1,:])]
-        ϕ_pzc       = row[findfirst(isequal("ϕ_pzc"), dh[1,:])]
-        local_pH    = row[findfirst(isequal("local_pH"), dh[1,:])]
-        T           = row[findfirst(isequal("T"), dh[1,:])]
-        σ           = row[findfirst(isequal("σ"), dh[1,:])]
-        (; ϕ_we, ϕ, ϕ_pzc, local_pH, T, σ)
-    end
-
-    function test_catmap_output(row)
-        (; ϕ_we, ϕ, ϕ_pzc, local_pH, T, σ) = findparams(row)
-
-        input_instance_file = instantiate_catmap_template("catmap_CO2R_template.mkm", σ, ϕ_we, ϕ, local_pH; ϕ_pzc, T)
-        catmap_params       = parse_catmap_input(input_instance_file)
-        rm(input_instance_file)
-        
-        free_energies = Dict(zip(keys(catmap_params.species_list), fill(0.0, length(catmap_params.species_list))))
-        CatmapInterface.compute_free_energies!(free_energies, catmap_params, σ, ϕ_we, ϕ, local_pH)
-
-        @testset "species=$s" for s in collect(keys(free_energies))
-            catmap_output = 0.0
-            ss = startswith(s, "_") ? s[2:end] : s
-            catmap_output = row[findfirst(isequal(ss), dh[1,:])]
-            @test isapprox(catmap_output, free_energies[s] / eV; rtol)
+function compute_catmap_free_energies(catmap_instance_path, params)
+    free_energies = py"catmap_kinetic_model"(catmap_instance_path)
+ 	free_energies = convert(Dict{String, Float64}, free_energies)
+    delete!(free_energies, "g")
+    for (k, v) in free_energies
+        if length(k) == 1
+            delete!(free_energies, k)
+            free_energies["_$k"] = v
         end
     end
-
-    @testset "$(findparams(row))" for row in eachrow(dc)
-        test_catmap_output(row)
-    end
+    free_energies
 end
 
-catmap_params   = parse_catmap_input("catmap_CO2R_template.mkm")
-rn              = create_reaction_network(catmap_params)
+function compute_interface_free_energies(catmap_instance_path, params)
+    (; σ, ϕ_we, ϕ, local_pH) = params
+    catmap_params   = parse_catmap_input(catmap_instance_path)    
+    free_energies   = Dict(zip(keys(catmap_params.species_list), fill(0.0, length(catmap_params.species_list))))
+    CatmapInterface.compute_free_energies!(free_energies, catmap_params, σ, ϕ_we, ϕ, local_pH)
+    free_energies
+end
+
+function test_free_energies(catmap_template_path, params; rtol=1.0e-5)
+    catmap_instance_path    = instantiate_catmap_template(catmap_template_path, params)
+    catmap_free_energies    = compute_catmap_free_energies(catmap_instance_path, params)
+    interface_free_energies = compute_interface_free_energies(catmap_instance_path, params)
+    rm(catmap_instance_path)
+    @assert keys(catmap_free_energies) == keys(interface_free_energies) "The names of the species don't match: $(keys(catmap_free_energies)) vs. $(keys(interface_free_energies))"
+    @testset "species=$species" for species in keys(interface_free_energies)
+        @test isapprox(catmap_free_energies[species], interface_free_energies[species]/eV; rtol)
+    end 
+end
+
+
+const Cgap = 0.2 # in μF/cm^2
+models = [
+    (;  
+        model                   = "CO₂-Reduction on Ag", 
+        catmap_template_path    = "catmap_CO2R_template.mkm", 
+        params_set              = map(
+            row -> (; zip([:ϕ_we    ,:local_pH  ,:T     ,:ϕ_pzc     ,:ϕ     ,:σ     ], [row; Cgap * (row[1] - row[5] - row[4])])...),
+            eachrow([
+                            -0.8    6.8        298.0  0.16       -0.80
+                            -0.8    6.8        298.0  0.16       -0.72
+                            -0.8    6.8        298.0  0.16       -0.64
+                            -0.8    6.8        298.0  0.16       -0.56
+                            -0.8    6.8        298.0  0.16       -0.48
+                            -0.8    6.8        298.0  0.16       -0.40
+                            -0.8    6.8        298.0  0.16       -0.32
+                            -0.8    6.8        298.0  0.16       -0.24
+                            -0.8    6.8        298.0  0.16       -0.16
+                            -0.8    6.8        298.0  0.16       -0.08
+                            -0.8    6.8        298.0  0.16       +0.00
+            ])
+        )
+    ),
+]
 
 @testset "CatmapInterface.jl" begin
-    @test numreactions(rn) == 2*4
-    @test numspecies(rn) == 6
-    compare_catmap_output("./catmap_data.csv")
+    @testset "$model" for (model, catmap_template_path, params_set) in models
+        @testset "$(repr(params))" for params in params_set
+            test_free_energies(catmap_template_path, params)
+        end
+    end
 end
-
-
 
 # md"""
 # ## CatMAP
