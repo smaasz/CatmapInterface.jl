@@ -49,10 +49,10 @@ jobs:
             using PyCall
             pushfirst!(pyimport("sys")."path", ENV["CATMAP"])
             using Conda
-            Conda.add("mpmath", "mpmath")
-            Conda.add("numpy", "numpy")
-            Conda.add("scipy", "scipy")
-            Conda.add("ase", "ase")'
+            Conda.add("mpmath")
+            Conda.add("numpy")
+            Conda.add("scipy")
+            Conda.add("ase")'
       - uses: julia-actions/julia-runtest@v1
         env:
           PYTHON: ""
