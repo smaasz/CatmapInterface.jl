@@ -6,6 +6,7 @@ using PyCall
 
 const eV = 1.602176634e-19
 
+# The following python code block defines a function to extract the free energies of all reactants given a CatMAP input file
 py"""
 from catmap import ReactionModel
 
@@ -38,8 +39,11 @@ def catmap_kinetic_model(setup_file):
     return energies
 """
 
+"""
+    instantiate_catmap_template(template_file_path, params)
 
-
+Instantiate a template file by inserting the parameters in the `NamedTuple` `params`.
+"""
 function instantiate_catmap_template(template_file_path, params)
     (; σ, ϕ_we, ϕ, local_pH, ϕ_pzc, T) = params
     input_instance_string = open(template_file_path, "r") do template_file
@@ -51,7 +55,7 @@ function instantiate_catmap_template(template_file_path, params)
 		r"voltage_diff_drop.?=.*" => "voltage_diff_drop = $ϕ",
 		r"pH.?=.*" => "pH = $local_pH",
 		r"Upzc.?=.*" => "Upzc = $ϕ_pzc",
-		r"\nsigma_input.?=.*" => "\nsigma_input = $σ/0.01",
+		r"\nsigma_input.?=.*" => "\nsigma_input = $σ/0.01", # in μF/cm^2
 	)
     input_instance_string = replace(input_instance_string, replacements...)
 
@@ -63,6 +67,11 @@ function instantiate_catmap_template(template_file_path, params)
     return input_instance_file_name
 end
 
+"""
+    compute_catmap_free_energies(catmap_instance_path, params)
+
+Compute the free energies of all reactants in the microkinetic model from CatMAP.
+"""
 function compute_catmap_free_energies(catmap_instance_path, params)
     free_energies = py"catmap_kinetic_model"(catmap_instance_path)
  	free_energies = convert(Dict{String, Float64}, free_energies)
@@ -76,6 +85,11 @@ function compute_catmap_free_energies(catmap_instance_path, params)
     free_energies
 end
 
+"""
+    compute_interface_free_energies(catmap_instance_path, params)
+
+Compute the free energies of all reactants in the microkinetic model from the CatmapInterface.
+"""
 function compute_interface_free_energies(catmap_instance_path, params)
     (; σ, ϕ_we, ϕ, local_pH) = params
     catmap_params   = parse_catmap_input(catmap_instance_path)    
@@ -84,6 +98,11 @@ function compute_interface_free_energies(catmap_instance_path, params)
     free_energies
 end
 
+"""
+    test_free_energies(catmap_template_path, params; rtol=1.0e-5)
+
+Create a testset where the free energies of all reactants in the microkinetic model computed by CatMAP and the CatmapInterface are compared.
+"""
 function test_free_energies(catmap_template_path, params; rtol=1.0e-5)
     catmap_instance_path    = instantiate_catmap_template(catmap_template_path, params)
     catmap_free_energies    = compute_catmap_free_energies(catmap_instance_path, params)
@@ -96,7 +115,7 @@ function test_free_energies(catmap_template_path, params; rtol=1.0e-5)
 end
 
 
-const Cgap = 0.2 # in μF/cm^2
+const Cgap = 0.2 # in F/m^2
 models = [
     (;  
         model                   = "CO₂-Reduction on Ag", 
@@ -104,17 +123,17 @@ models = [
         params_set              = map(
             row -> (; zip([:ϕ_we    ,:local_pH  ,:T     ,:ϕ_pzc     ,:ϕ     ,:σ     ], [row; Cgap * (row[1] - row[5] - row[4])])...),
             eachrow([
-                            -0.8    6.8        298.0  0.16       -0.80
-                            -0.8    6.8        298.0  0.16       -0.72
-                            -0.8    6.8        298.0  0.16       -0.64
-                            -0.8    6.8        298.0  0.16       -0.56
-                            -0.8    6.8        298.0  0.16       -0.48
-                            -0.8    6.8        298.0  0.16       -0.40
-                            -0.8    6.8        298.0  0.16       -0.32
-                            -0.8    6.8        298.0  0.16       -0.24
-                            -0.8    6.8        298.0  0.16       -0.16
-                            -0.8    6.8        298.0  0.16       -0.08
-                            -0.8    6.8        298.0  0.16       +0.00
+                            -0.8    6.8         298.0   0.16        -0.80
+                            -0.8    6.8         298.0   0.16        -0.72
+                            -0.8    6.8         298.0   0.16        -0.64
+                            -0.8    6.8         298.0   0.16        -0.56
+                            -0.8    6.8         298.0   0.16        -0.48
+                            -0.8    6.8         298.0   0.16        -0.40
+                            -0.8    6.8         298.0   0.16        -0.32
+                            -0.8    6.8         298.0   0.16        -0.24
+                            -0.8    6.8         298.0   0.16        -0.16
+                            -0.8    6.8         298.0   0.16        -0.08
+                            -0.8    6.8         298.0   0.16        +0.00
             ])
         )
     ),
