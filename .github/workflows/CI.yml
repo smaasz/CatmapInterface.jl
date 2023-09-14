@@ -40,7 +40,7 @@ jobs:
           path: catmap-1
       - name: Quick Check
         env:
-          CATMAP: $GITHUB_WORKFLOW/catmap-1
+          CATMAP: ${{ env.GITHUB_WORKSPACE }}/catmap-1
         run: ls $CATMAP
       - name: Install CatMAP dependencies
         env:
@@ -57,7 +57,7 @@ jobs:
       - uses: julia-actions/julia-runtest@v1
         env:
           PYTHON: ""
-          CATMAP: $GITHUB_WORKSPACE/catmap-1
+          CATMAP: ${{ env.GITHUB_WORKSPACE }}/catmap-1
   docs:
     name: Documentation
     runs-on: ubuntu-latest
