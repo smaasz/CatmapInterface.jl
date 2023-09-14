@@ -97,7 +97,6 @@ function simple_electrochemical(energies, catmap_params::CatmapParams, σ, ϕ_we
     for (s, sp) in species_list
         if isa(sp, TStateSpecies) && occursin("ele", sp.species_name)
             (; β) = sp
-            @show β
             energies[s] += (-(ϕ_we - ϕ) + β * (ϕ_we - ϕ - Uref)) * eV
         end
     end
