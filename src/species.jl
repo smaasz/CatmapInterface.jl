@@ -105,8 +105,8 @@ struct AdsorbateSpecies <: AbstractSpecies
     """
     Parameters specifying the electrochemcial correction to the formation energy due to surface charges: ``G_f(U=0, σ) ≈ G_f(U=0,σ=0)+a\\cdot σ + b\\cdot σ^2``
     """
-    sigma_params::@NamedTuple{a::Float64, b::Float64}
-    function AdsorbateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params::@NamedTuple{a::Float64, b::Float64})
+    sigma_params::@NamedTuple{a::Union{Nothing, Float64}, b::Union{Nothing, Float64}}
+    function AdsorbateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params=(;a=nothing, b=nothing))
         if coverage < 0.0 || coverage > 1.0
             throw(DomainError("coverage must be between 0 and 1"))
         end
@@ -150,7 +150,7 @@ struct TStateSpecies <: AbstractSpecies
     """
     Parameters specifying the electrochemcial correction to the formation energy due to surface charges: ``G_f(U=0, σ) ≈ G_f(U=0,σ=0)+a\\cdot σ + b\\cdot σ^2``
     """
-    sigma_params::@NamedTuple{a::Float64, b::Float64}
+    sigma_params::@NamedTuple{a::Union{Nothing, Float64}, b::Union{Nothing, Float64}}
     """
     Transfer coefficient of the reaction passing through the specified transition state
     """
@@ -159,7 +159,7 @@ struct TStateSpecies <: AbstractSpecies
     Specifying the list of (stable) species the transition state is between
     """
     between_species::Vector{String}
-    function TStateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params::@NamedTuple{a::Float64, b::Float64}, β, between_species)
+    function TStateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params=(;a=nothing, b=nothing), β, between_species)
         if coverage < 0.0 || coverage > 1.0
             throw(DomainError("coverage must be between 0 and 1"))
         end

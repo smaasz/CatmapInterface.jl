@@ -58,39 +58,11 @@ end
 """
 $(SIGNATURES) 
 
-Add electrochemical correction terms for all influenced species using ...
+Add electrochemical pH-correction terms for all influenced species.
 """
-function hbond_surface_charge_density(energies, catmap_params::CatmapParams, σ, ϕ_we, ϕ, local_pH)
+function _get_echem_corrections(energies, catmap_params::CatmapParams, σ, ϕ_we, ϕ, local_pH)
     @local_unitfactors eV
-    hbond_dict = py"hbond_dict"
-    (; species_list, T, Upzc, potential_reference_scale) = catmap_params
-    # simple_electrochem_corrections
-    if haskey(energies, "ele_g")
-        energies["ele_g"] += -(ϕ_we - ϕ) * eV
-    end
-    for (s, sp) in species_list
-        if isa(sp, TStateSpecies)
-            (; β) = sp
-            energies[s] += (-(ϕ_we - ϕ) + β * (ϕ_we - ϕ - Upzc)) * eV
-        end
-    end
-    # hbond_electrochemical
-    for (s, sp) in species_list
-        if isa(sp, AdsorbateSpecies)
-            (; species_name) = sp
-            if haskey(hbond_dict, species_name)
-                energies[s] += hbond_dict[species_name] * eV
-            end
-        end
-    end
-    # hbond_surface_charge_density
-    for (s, sp) in species_list
-        if (isa(sp, AdsorbateSpecies) || isa(sp, TStateSpecies))
-            (; a, b) = sp.sigma_params
-            energies[s] += (a * σ + b * σ^2) * eV
-        end
-    end
-    # pH_correction
+    (; species_list, potential_reference_scale, T) = catmap_params
     if haskey(species_list, "H_g") || haskey(species_list, "OH_g")
         G_H2 = energies["H2_g"]
         if potential_reference_scale == "SHE"
@@ -107,4 +79,58 @@ function hbond_surface_charge_density(energies, catmap_params::CatmapParams, σ,
             energies["OH_g"] += G_OH
         end
     end
+    nothing
+end
+
+"""
+$(SIGNATURES) 
+
+Add electrochemical correction terms for all influenced species using ...
+"""
+function simple_electrochemical(energies, catmap_params::CatmapParams, σ, ϕ_we, ϕ, local_pH)
+    @local_unitfactors eV
+    (; species_list, Uref) = catmap_params
+    # simple_electrochem_corrections
+    if haskey(energies, "ele_g")
+        energies["ele_g"] += -(ϕ_we - ϕ) * eV
+    end
+    for (s, sp) in species_list
+        if isa(sp, TStateSpecies) && occursin("ele", sp.species_name)
+            (; β) = sp
+            energies[s] += (-(ϕ_we - ϕ) + β * (ϕ_we - ϕ - Uref)) * eV
+        end
+    end
+    # pH_correction
+    _get_echem_corrections(energies, catmap_params, σ, ϕ_we, ϕ, local_pH)
+    nothing
+end
+
+"""
+$(SIGNATURES) 
+
+Add electrochemical correction terms for all influenced species using ...
+"""
+function hbond_surface_charge_density(energies, catmap_params::CatmapParams, σ, ϕ_we, ϕ, local_pH)
+    @local_unitfactors eV
+    # simple_electrochem
+    simple_electrochemical(energies, catmap_params, σ , ϕ_we, ϕ, local_pH)
+    hbond_dict = py"hbond_dict"
+    (; species_list) = catmap_params
+    # hbond_electrochemical
+    for (s, sp) in species_list
+        if isa(sp, AdsorbateSpecies)
+            (; species_name) = sp
+            if haskey(hbond_dict, species_name)
+                energies[s] += hbond_dict[species_name] * eV
+            end
+        end
+    end
+    # hbond_surface_charge_density
+    for (s, sp) in species_list
+        if (isa(sp, AdsorbateSpecies) || isa(sp, TStateSpecies))
+            (; a, b) = sp.sigma_params
+            energies[s] += (a * σ + b * σ^2) * eV
+        end
+    end
+    nothing
 end

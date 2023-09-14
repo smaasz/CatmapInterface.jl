@@ -8,17 +8,12 @@ if haskey(ENV, "CATMAP")
     pushfirst!(pyimport("sys")."path", ENV["CATMAP"])
 end
 
-println(PyCall.libpython)
-println(PyCall.conda)
-println(pyimport("sys")."path")
-
 const eV = 1.602176634e-19
 
 # The following python code block defines a function to extract the free energies of all reactants given a CatMAP input file
 py"""
 from catmap import ReactionModel
 import catmap
-print(catmap.__file__)
 
 def catmap_kinetic_model(setup_file):
 
@@ -69,7 +64,7 @@ function instantiate_catmap_template(template_file_path, params)
 	)
     input_instance_string = replace(input_instance_string, replacements...)
 
-    input_instance_file_name = "CO2R.mkm"
+    input_instance_file_name = joinpath(dirname(template_file_path), "CO2R.mkm")
     open(input_instance_file_name, "w") do input_instance_file
         write(input_instance_file, input_instance_string)
     end
@@ -83,7 +78,14 @@ end
 Compute the free energies of all reactants in the microkinetic model from CatMAP.
 """
 function compute_catmap_free_energies(catmap_instance_path, params)
-    free_energies = py"catmap_kinetic_model"(catmap_instance_path)
+    starting_dir = pwd()
+    catmap_instance_path = abspath(catmap_instance_path)
+    cd(dirname(catmap_instance_path))
+    try
+        free_energies = py"catmap_kinetic_model"(catmap_instance_path)
+    finally
+        cd(starting_dir)
+    end
  	free_energies = convert(Dict{String, Float64}, free_energies)
     delete!(free_energies, "g")
     for (k, v) in free_energies
@@ -128,8 +130,28 @@ end
 const Cgap = 0.2 # in F/m^2
 models = [
     (;  
-        model                   = "CO₂-Reduction on Ag", 
-        catmap_template_path    = "catmap_CO2R_template.mkm", 
+        model                   = "CO₂-Reduction on Au with hbond corrections", 
+        catmap_template_path    = "../data/Au-model-hbond/catmap_CO2R_template.mkm", 
+        params_set              = map(
+            row -> (; zip([:ϕ_we    ,:local_pH  ,:T     ,:ϕ_pzc     ,:ϕ     ,:σ     ], [row; Cgap * (row[1] - row[5] - row[4])])...),
+            eachrow([
+                            -0.8    6.8         298.0   0.16        -0.80
+                            -0.8    6.8         298.0   0.16        -0.72
+                            -0.8    6.8         298.0   0.16        -0.64
+                            -0.8    6.8         298.0   0.16        -0.56
+                            -0.8    6.8         298.0   0.16        -0.48
+                            -0.8    6.8         298.0   0.16        -0.40
+                            -0.8    6.8         298.0   0.16        -0.32
+                            -0.8    6.8         298.0   0.16        -0.24
+                            -0.8    6.8         298.0   0.16        -0.16
+                            -0.8    6.8         298.0   0.16        -0.08
+                            -0.8    6.8         298.0   0.16        +0.00
+            ])
+        )
+    ),
+    (;  
+        model                   = "CO₂-Reduction on Au with simple corrections", 
+        catmap_template_path    = "../data/Au-model-simple/catmap_CO2R_template.mkm", 
         params_set              = map(
             row -> (; zip([:ϕ_we    ,:local_pH  ,:T     ,:ϕ_pzc     ,:ϕ     ,:σ     ], [row; Cgap * (row[1] - row[5] - row[4])])...),
             eachrow([

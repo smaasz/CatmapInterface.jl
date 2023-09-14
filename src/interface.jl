@@ -76,9 +76,9 @@ struct CatmapParams
     """
     bulk_pH::Float64
     """
-    Potential of zero charge with respect to the specified potential reference scale
+    Reference potential with respect to the specified potential reference scale
     """
-    Upzc::Float64
+    Uref::Float64
     """
     Either RHE or SHE
     """
@@ -87,7 +87,7 @@ struct CatmapParams
     Temperature in the bulk
     """
     T::Float64
-    function CatmapParams(; reactions, prefactors, species_list, gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode, bulk_pH, Upzc, potential_reference_scale, T)       
+    function CatmapParams(; reactions, prefactors, species_list, gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode, bulk_pH, Uref, potential_reference_scale, T)       
         if !(length(prefactors) == length(reactions))
             throw(ArgumentError("The number of prefactors must match the number of reactions"))
         end
@@ -118,7 +118,7 @@ struct CatmapParams
         if T < 0.0
             throw(ArgumentError("temperature T=$T must be positive"))
         end
-        new(reactions, prefactors, species_list, gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode, bulk_pH, Upzc, potential_reference_scale, T)
+        new(reactions, prefactors, species_list, gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode, bulk_pH, Uref, potential_reference_scale, T)
     end
 end
 
@@ -199,7 +199,7 @@ function parse_reaction(r::AbstractString; beta=nothing)
             catch e
                 throw(ArgumentError("$(match_rxn_with_TS[:beta]) is not a valid float"))
             end
-        end        
+        end   
         tstate = TState(components=tstate_components, beta=beta)
     else
         throw(ArgumentError("$r is not a valid reaction equation"))
@@ -314,7 +314,7 @@ The following information is used and must be specified:
 - input_file (including the energy table)
 - surface_names
 - bulk_ph
-- Upzc
+- Uref
 - potential_reference_scale
 - gas_thermo_mode
 - adsorbate_thermo_mode
@@ -354,22 +354,20 @@ function parse_catmap_input(input_file_path::AbstractString)
         surface_names[1]
     end
     
-    species_list = specieslist(reactions, species_definitions, energy_table, surface_name)
-
-
     bulk_pH = py"bulk_ph"
     
-    Upzc                        = py"extrapolated_potential"#py"Upzc"
+    Uref                        = py"extrapolated_potential"
     potential_reference_scale   = py"potential_reference_scale"
-
+    
     
     gas_thermo_mode             = Symbol(py"gas_thermo_mode")
     adsorbate_thermo_mode       = Symbol(py"adsorbate_thermo_mode")
     electrochemical_thermo_mode = Symbol(py"electrochemical_thermo_mode")
-
+    
+    species_list = specieslist(reactions, species_definitions, energy_table, surface_name; electrochemical_thermo_mode)
+    
     T = 298
-
-    CatmapParams(; reactions, prefactors, species_list, gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode, bulk_pH, Upzc, potential_reference_scale, T)
+    CatmapParams(; reactions, prefactors, species_list, gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode, bulk_pH, Uref, potential_reference_scale, T)
 end
 
 
@@ -384,7 +382,7 @@ $(SIGNATURES)
 
 Collect the specifications of all reactants in a list.
 """
-function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_table, surface_name)
+function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_table, surface_name; electrochemical_thermo_mode=:simple_electrochemical)
     @local_unitfactors μA cm mol m Pa
     henry_consts = py"henry_consts"
     # collect all species in a set
@@ -414,13 +412,21 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
         elseif !isnothing(match_adsorbate)
             species_name                        = match_adsorbate[:species_name]
             site                                = match_adsorbate[:site]
-            (; sigma_params)                    = findspecies(species_name, site, species_defs)
-            sigma_params                        = (; a = sigma_params[2] / (μA/cm^2), b = sigma_params[1] / (μA/cm^2)^2)
+            species_def                         = findspecies(species_name, site, species_defs)
+            optional_params                     = []
+            if electrochemical_thermo_mode == :hbond_surface_charge_density
+                if !haskey(species_def, :sigma_params)
+                    throw(ArgumentError("To use the electrochemical_thermo_mode=hbond_surface_charge_density sigma_params need to be specified for the adsorbate $species_name"))
+                else
+                    (; sigma_params) = species_def
+                    push!(optional_params, :sigma_params => (; a = sigma_params[2] / (μA/cm^2), b = sigma_params[1] / (μA/cm^2)^2))
+                end
+            end
             coverage                            = 0.0
             (; site_names)                      = findspecies("", site, species_defs)
             site_name                           = site_names[1]
             (; formation_energy, frequencies)   = findspecies(species_name, energy_table; surface_name, site_name)
-            species_list[s]                     = AdsorbateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params)
+            species_list[s]                     = AdsorbateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, optional_params...)
         elseif !isnothing(match_site)
             site            = match_site[:site]
             (; site_names)  = findspecies("", site, species_defs)
@@ -443,13 +449,21 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
                 if !isnothing(match_tstate)
                     species_name                        = match_tstate[:species_name]
                     site                                = match_tstate[:site]
-                    (; sigma_params)                    = findspecies(species_name, site, species_defs)
-                    sigma_params                        = (; a = sigma_params[2] / (μA/cm^2), b = sigma_params[1] / (μA/cm^2)^2)
+                    species_def                         = findspecies(species_name, site, species_defs)
+                    optional_params                     = []
+                    if electrochemical_thermo_mode == :hbond_surface_charge_density
+                        if !haskey(species_def, :sigma_params)
+                            throw(ArgumentError("To use the electrochemical_thermo_mode=hbond_surface_charge_density sigma_params need to be specified for the adsorbate $species_name"))
+                        else
+                            (; sigma_params) = species_def
+                            push!(optional_params, :sigma_params => (; a = sigma_params[2] / (μA/cm^2), b = sigma_params[1] / (μA/cm^2)^2))
+                        end
+                    end
                     coverage                            = 0.0
                     (; site_names)                      = findspecies("", site, species_defs)
                     site_name                           = site_names[1]
                     (; formation_energy, frequencies)   = findspecies(species_name, energy_table; surface_name, site_name)
-                    species_list[component]         = TStateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params, β=tstate.beta, between_species=[first.(educts); first.(products)])
+                    species_list[component]         = TStateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, β=tstate.beta, between_species=[first.(educts); first.(products)], optional_params...)
                 else
                     throw(ArgumentError("$(component) is not a valid transition state"))
                 end
