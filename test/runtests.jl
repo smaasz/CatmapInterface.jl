@@ -8,11 +8,17 @@ if haskey(ENV, "CATMAP")
     pushfirst!(pyimport("sys")."path", ENV["CATMAP"])
 end
 
+println(PyCall.libpython)
+println(PyCall.conda)
+println(pyimport("sys")."path")
+
 const eV = 1.602176634e-19
 
 # The following python code block defines a function to extract the free energies of all reactants given a CatMAP input file
 py"""
 from catmap import ReactionModel
+import catmap
+print(catmap.__file__)
 
 def catmap_kinetic_model(setup_file):
 

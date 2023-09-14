@@ -38,6 +38,10 @@ jobs:
         with:
           repository: sringe/catmap-1
           path: catmap-1
+      - name: Quick Check
+        env:
+          CATMAP: ${{ env.GITHUB_WORKFLOW }}/catmap-1
+        run: ls $CATMAP
       - name: Install CatMAP dependencies
         env:
           PYTHON: ""
