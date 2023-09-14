@@ -53,7 +53,7 @@ jobs:
       - uses: julia-actions/julia-runtest@v1
         env:
           PYTHON: ""
-          CATMAP: "$GITHUB_WORKSPACE/catmap-1"
+          CATMAP: ${{ env.GITHUB_WORKSPACE }}/catmap-1
   docs:
     name: Documentation
     runs-on: ubuntu-latest
