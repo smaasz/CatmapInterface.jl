@@ -33,9 +33,31 @@ jobs:
       - uses: julia-actions/julia-buildpkg@v1
         env:
           PYTHON: ""
+      - name: Checkout CatMAP
+        uses: actions/checkout@v2
+        with:
+          repository: sringe/catmap-1
+          path: catmap-1
+      - name: Quick Check
+        env:
+          CATMAP: ${{ github.workspace }}/catmap-1
+        run: ls ${{ env.CATMAP }}
+      - name: Install CatMAP dependencies
+        env:
+          PYTHON: ""
+        run: |
+          julia --project=test -e '
+            using Pkg
+            Pkg.instantiate()
+            using Conda
+            Conda.add("mpmath")
+            Conda.add("numpy")
+            Conda.add("scipy")
+            Conda.add("ase")'
       - uses: julia-actions/julia-runtest@v1
         env:
           PYTHON: ""
+          CATMAP: ${{ github.workspace }}/catmap-1
   docs:
     name: Documentation
     runs-on: ubuntu-latest

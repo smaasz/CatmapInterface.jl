@@ -105,7 +105,7 @@ function create_reaction_network(catmap_params::CatmapParams)
     for ((; educts, products, tstate), prefactor) in zip(catmap_params.reactions, catmap_params.prefactors)
         (Gf_IS, es, αs, af) = process_reaction_side(educts)
         (Gf_FS, ps, βs, ar) = process_reaction_side(products)
-        Gf_TS = isnothing(tstate) ? max(Gf_IS, Gf_FS) : free_energies[tstate.name]
+        Gf_TS = isnothing(tstate) ? max(Gf_IS, Gf_FS) : mapreduce(x->free_energies[first(x)]^last(x), +, tstate.components) #free_energies[tstate.name]
         rxn_f = Reaction(ratelaw_TS(prefactor, Gf_IS, Gf_TS, T, af), es, ps, αs, βs; only_use_rate=true)
         rxn_r = Reaction(ratelaw_TS(prefactor, Gf_FS, Gf_TS, T, ar), ps, es, βs, αs; only_use_rate=true)
         push!(rxs, rxn_f)
