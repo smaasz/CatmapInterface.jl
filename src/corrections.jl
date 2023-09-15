@@ -1,4 +1,100 @@
 """
+"""
+function ideal_adsorbate_interaction(energies, catmap_params, coverages)
+    nothing
+end
+
+function smooth_piecewise_linear_interaction_response(θ_tot, interaction_response_params::InteractionResponseParams)
+    (; slope, cutoff, smoothing) = interaction_response_params
+    x1 = cutoff + smoothing
+    x0 = cutoff - smoothing
+    c_0 = 0.0
+    if θ_tot <= x0:
+        c_0 = 0.0
+    elseif θ_tot <= x1:
+        α = slope/(2*(x1-x0))
+        c_0 = (α * (θ_tot - x0)^2)/θ_tot
+        #dC = alpha*(1-(x0/theta_tot)**2)
+        #d2C = (2*alpha*x0**2)/(theta_tot**3)
+    else:
+        c_0 = slope*(θ_tot - cutoff)/θ_tot
+        # dC = slope*(cutoff/(theta_tot**2))
+        # d2C = (-2*slope*cutoff)/(theta_tot**3)
+    end
+    c_0
+end
+
+function linear_interaction_response(θ_tot, interaction_response_params::InteractionResponseParams)
+    (; slope) = interaction_response_params
+    smooth_piecewise_linear_interaction_response(θ_tot, InteractionResponseParams(slope, cutoff=0.0, smoothing=0.0))
+end
+
+function piecewise_linear_interaction_response(θ_tot, interaction_response_params::InteractionResponseParams)
+    (; slope, cutoff) = interaction_response_params
+    smooth_piecewise_linear_interaction_response(θ_tot, InteractionResponseParams(slope, cutoff, smoothing=0.0))
+end
+
+"""
+"""
+function first_order_adsorbate_interaction(energies, catmap_params::CatmapParams, θ)
+    @local_unitfactors eV
+    (; species_list, adsorbate_interaction_params) = catmap_params
+    (; interaction_response_function, interaction_response_params, cross_interaction_mode, transition_state_cross_interaction_mode) = adsorbate_interaction_params
+
+    θ_tot               = sum(values(θ))
+    response_function   = getfield(@__MODULE__, Symbol(interaction_response_function, "_interaction_response"))
+    response_value      = response_function(θ_tot, interaction_response_params)
+    
+    cross_interaction_function = 
+    if cross_interaction_mode == :geometric_mean
+        (ϵ_s, ϵ_os) -> √(ϵ_s * ϵ_os)
+    elseif cross_interaction_mode == :arithmetic_mean
+        (ϵ_s, ϵ_os) -> (ϵ_s + ϵ_os) / 2
+    elseif cross_interaction_mode == :neglect
+        (ϵ_s, ϵ_os) -> 0.0
+    end
+
+    transition_state_cross_interaction_function = 
+    if transition_state_cross_interaction_mode == :intermediate
+        (ϵ_rs) -> ϵ_rs * 0.5
+    elseif transition_state_cross_interaction_mode == :neglect 
+        (ϵ_rs) -> 0.0
+    end
+
+    for (s, sp) in species_list
+        if isa(sp, AdsorbateSpecies)
+            for (os, osp) in species_list
+                if s == os
+                    ϵ = sp.self_interaction_param
+                    sp.cross_interaction_params[os] = ϵ # to remove necessity of case-distinction later
+                    energies[s] += response_value * ϵ * θ[s] * eV
+                elseif isa(osp, AdsorbateSpecies)
+                    ϵ = getkey(sp.cross_interaction_params, os, nothing)
+                    if isnothing(ϵ)
+                        ϵ_s  = sp.self_interaction_param
+                        ϵ_os = sp.self_interaction_param
+                        ϵ    = cross_interaction_function(ϵ_s, ϵ_os)
+                        sp.cross_interaction_params[os] = ϵ
+                    end
+                    energies[s] += response_value * ϵ * θ[s] * eV
+                end 
+            end
+        elseif isa(sp, TStateSpecies)
+            for (os, osp) in species_list
+                if isa(osp, AdsorbateSpecies)
+                    ϵ = getkey(sp.cross_interaction_params, os, nothing)
+                    if isnothing(ϵ)
+                        ϵ_rs = mapreduce(reactant -> species_list[reactant].cross_interaction_params[os], +, sp.between_species)
+                        ϵ    = transition_state_cross_interaction_function(ϵ_rs)
+                    end
+                    energies[s] += response_value * ϵ * θ[s]
+                end 
+            end
+        end
+    end
+end
+
+"""
 $(SIGNATURES)
 
 Add thermodynamic correction terms for all gas species using the ideal gas approximation.

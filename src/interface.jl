@@ -38,6 +38,30 @@ $(TYPEDFIELDS)
     tstate::Union{Nothing, TState}
 end
 
+@kwdef struct InteractionResponseParams
+    slope::Float64      = 1.0
+    cutoff::Float64     = 0.25
+    smoothing::Float64  = 0.05
+end
+
+@kwdef struct AdsorbateInteractionParams
+    """
+    """
+    adsorbate_interaction_mode::Symbol = :ideal
+    """
+    """
+    interaction_response_function::Symbol = :linear
+    """
+    """
+    cross_interaction_mode::Symbol = :geometric_mean
+    """
+    """
+    transition_state_cross_interaction_mode::Symbol = :intermediate_state
+    """
+    Parameters used to specify the exact form of the `interaction_response_function` in [`CatmapInterface.first_order_adsorbate_interaction`](@ref)
+    """
+    interaction_response_params::InteractionResponseParams = InteractionResponseParams()
+end
 
 """
 $(TYPEDEF)
@@ -87,7 +111,11 @@ struct CatmapParams
     Temperature in the bulk
     """
     T::Float64
-    function CatmapParams(; reactions, prefactors, species_list, gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode, bulk_pH, Uref, potential_reference_scale, T)       
+    """
+    Parameter specifying the adsorbate interaction model
+    """
+    adsorbate_interaction_params::AdsorbateInteractionParams
+    function CatmapParams(; reactions, prefactors, species_list, gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode, bulk_pH, Uref, potential_reference_scale, T, adsorbate_interaction_params = AdsorbateInteractionParams())       
         if !(length(prefactors) == length(reactions))
             throw(ArgumentError("The number of prefactors must match the number of reactions"))
         end
