@@ -169,6 +169,26 @@ models = [
             ])
         )
     ),
+    (;  
+        model                   = "CO₂-Reduction on Cu with simple corrections", 
+        catmap_template_path    = "../data/Liu-model-simple/catmap_CO2R_template.mkm", 
+        params_set              = map(
+            row -> (; zip([:ϕ_we    ,:local_pH  ,:T     ,:ϕ_pzc     ,:ϕ     ,:σ     ], [row; Cgap * (row[1] - row[5] - row[4])])...),
+            eachrow([
+                            -0.8    6.8         298.0   0.16        -0.80
+                            -0.8    6.8         298.0   0.16        -0.72
+                            -0.8    6.8         298.0   0.16        -0.64
+                            -0.8    6.8         298.0   0.16        -0.56
+                            -0.8    6.8         298.0   0.16        -0.48
+                            -0.8    6.8         298.0   0.16        -0.40
+                            -0.8    6.8         298.0   0.16        -0.32
+                            -0.8    6.8         298.0   0.16        -0.24
+                            -0.8    6.8         298.0   0.16        -0.16
+                            -0.8    6.8         298.0   0.16        -0.08
+                            -0.8    6.8         298.0   0.16        +0.00
+            ])
+        )
+    ),
 ]
 
 @testset "CatmapInterface.jl" begin

@@ -42,17 +42,25 @@ function harmonic_adsorbate(energies, catmap_params::CatmapParams)
         end
     end
     for (s, sp) in species_list
+        
         if isa(sp, TStateSpecies)
-            (; between_species) = sp
-            for bs in between_species
-                if isa(species_list[bs], AdsorbateSpecies)
-                    (; formation_energy) = species_list[bs]
-                    thermo_correction = energies[bs] - formation_energy
-                    energies[s] += 0.5 * thermo_correction
+            if !isempty(sp.frequencies)
+                (; frequencies) = sp
+                energies[s] += py"get_thermal_correction_adsorbate"(T, frequencies * (h * c_0 / eV)) * eV
+            else
+                (; between_species) = sp
+                for bs in between_species
+                    if isa(species_list[bs], AdsorbateSpecies)
+                        (; formation_energy) = species_list[bs]
+                        thermo_correction = energies[bs] - formation_energy
+                        energies[s] += 0.5 * thermo_correction
+                    end
                 end
             end
         end
+
     end
+    nothing
 end
 
 """
