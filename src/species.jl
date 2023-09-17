@@ -170,8 +170,8 @@ struct TStateSpecies <: AbstractSpecies
     """
     Parameter used in [`CatmapInterface.first_order_adsorbate_interaction`](@ref) to specify the formation energy's dependence on the coverage of other adsorbates
     """
-    cross_interaction_params::Union{Nothing, Dict{String, Float64}}
-    function TStateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, β, between_species, sigma_params=(;a=nothing, b=nothing), cross_interaction_params=nothing)
+    cross_interaction_params::Dict{String, Float64}
+    function TStateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, β, between_species, sigma_params=(;a=nothing, b=nothing), cross_interaction_params=Dict{String, Float64}())
         if coverage < 0.0 || coverage > 1.0
             throw(DomainError("coverage must be between 0 and 1"))
         end
@@ -182,6 +182,12 @@ struct TStateSpecies <: AbstractSpecies
     end
 end
 #TStateSpecies(; formation_energy, coverage, site, surface_name, frequencies, sigma_params::Vector{Float64}) = TStateSpecies(; formation_energy, coverage, site, surface_name, frequencies, sigma_params=(; a=sigma_params[1], b=sigma_params[2]))
+
+@kwdef struct InteractionResponseParams
+    slope::Float64      = 1.0
+    cutoff::Float64     = 0.25
+    smoothing::Float64  = 0.05
+end
 
 """
 $(TYPEDEF)
@@ -197,4 +203,8 @@ $(TYPEDFIELDS)
     Name of the site
     """
     site_name::String
+    """
+    Parameters used to specify the exact form of the `interaction_response_function` in [`CatmapInterface.first_order_adsorbate_interaction`](@ref)
+    """
+    interaction_response_params::InteractionResponseParams = InteractionResponseParams()
 end

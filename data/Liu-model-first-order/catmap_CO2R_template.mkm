@@ -1,0 +1,188 @@
+scaler = 'ThermodynamicScaler'
+
+rxn_expressions = [
+     #HER from water
+    #1 Volmer
+    'H2O_g + ele_g + *_t <-> H2O-ele*_t -> H*_t + OH_g; beta=0.5',
+    #2 Heyrovski
+    'H2O_g + ele_g + H*_t <-> H-H2O-ele*_t -> H2_g + *_t + OH_g; beta=0.89',
+    #3 Tafel
+    '2H*_t <-> H-H*_t + *_t -> H2_g + 2*_t',
+
+    #4 CO adsorption
+    'CO_g + *_t <-> CO-*_t -> CO*_t',
+
+    #9 CO to CHO (barrierless)
+    'CO*_t + H2O_g + ele_g <-> H2O-CO-ele*_t <-> CHO*_t + OH_g; beta=0.5',
+    #CHO to CHOH
+    'CHO*_t + H2O_g + ele_g <-> CHOH*_t + OH_g',
+    
+    #10 rate-limiting for CH4: CHO to CHOH
+    'CHOH*_t + ele_g <-> CH-OH-ele*_t <-> CH*_t + OH_g',
+    #11 CHOH to CH4 (barrierless)
+    'CH*_t + 3H2O_g + 3ele_g <-> CH4_g + *_t + 3OH_g',
+
+    #12 2CO to OCCO (chemical)
+    '2CO*_t <-> OC-CO*_t <-> OCCO*_t; beta=0.5',
+    #13 rate-limiting for EtOH/C2H4: OCCO -> OCCOH
+    'OCCO*_t + H2O_g + ele_g <-> OCCO-H2O-ele*_t <-> OCCOH*_t + OH_g; beta=0.6',
+    #14 OCCOH to EtOH (or C2H4, same # of electrons) (barrierless)
+    'OCCOH*_t + 6H2O_g + 7ele_g <-> CH3CH2OH_g + 2*_t + 7OH_g',
+
+    #PREVIOUS
+    #4 CO2 adsorption
+    'CO2_g + 2*_t <-> CO2-*_t <-> CO2*_t',
+    #5 CO2 to COOH
+    'CO2*_t + H2O_g + ele_g -> COOH*_t + OH_g',
+    #6 *COOH to *CO
+    'COOH*_t + H2O_g + ele_g <-> COOH-H2O-ele*_t -> CO*_t + H2O_g + OH_g + *_t',
+#    #NEW
+#    'CO2_g + *_t + H2O_g + ele_g <-> ^0.3eV_t <-> COOH*_t + OH_g',
+#    #6 *COOH to *CO
+#    'COOH*_t + H2O_g + ele_g <-> ^0.3eV_t -> CO*_t + H2O_g + OH_g',
+    #8 COOH to formate
+#    'COOH*_t + H2O_g + ele_g <-> COOH-H2O-ele*_t <->  HCOOH_g + *_t + OH_g',
+]
+
+rxn_expressions_names=[str(i) for i in range(len(rxn_expressions))]
+
+rxn_mechanisms = { 'HER_Tafel':[1,1,3],
+                   'HER_Heyrovsky':[1,2],
+                   'CO':[4,5,6],
+                   'formate':[4,5,8],
+#                   'C1':[4,5,6,9,10,11],
+#                   'C2':[4,4,5,5,6,6,12,13,14]
+}
+
+prefactor_list = [1e13]*len(rxn_expressions)  #Heine: prefactor for CO is 1e8
+
+surface_names = ['Cu']
+
+descriptor_names= ['voltage', 'temperature']
+descriptor_ranges = [[-2.0,2.0],[298,298]]
+#descriptors = [-1.0384615384615383,298]
+resolution = [200,1]
+
+beta = 0.5
+
+pH = 13.0
+
+species_definitions = {}
+#educts
+species_definitions['OH_g'] = {'pressure':1e-07}
+species_definitions['ele_g'] = {'pressure':1.0, 'composition':{}}
+species_definitions['H2O_g'] = {'pressure':1.0}
+species_definitions['CO2_g'] = {'pressure':0.03419}
+#products
+species_definitions['CO_g'] = {'pressure':0.0}
+species_definitions['CH4_g'] = {'pressure':0.0}
+#species_definitions['HCOOH_g'] = {'pressure':0.0}
+species_definitions['CH3CH2OH_g'] = {'pressure':0.0}
+species_definitions['H2_g'] = {'pressure':0.0}
+#surface
+species_definitions['t'] = {'site_names': ['211'], 'total':1.0}
+
+data_file = 'catmap_CO2R.pkl'
+input_file = 'catmap_CO2R_energies.txt'
+
+gas_thermo_mode = 'ideal_gas' 
+adsorbate_thermo_mode = 'harmonic_adsorbate'
+electrochemical_thermo_mode = 'simple_electrochemical' # 'hbond_surface_charge_density' #
+potential_reference_scale = 'SHE'
+extrapolated_potential = -0.416985308915 #the potential at which the energies were calculated vs. SHE
+bulk_ph = 13.0
+
+decimal_precision = 100
+tolerance = 1e-25
+max_rootfinding_iterations = 200
+max_bisections = 3
+
+
+#max_coverage does not work here, because it makes no physical sense
+#species_definitions['CO_t'] = {'max_coverage':0.5}
+#for sp in ['COOH_t','CHO_t','OCCO_t','OCCOH_t','COOH-H2O-ele_t','OCCO-H2O-ele_t','CHO-H2O-ele_t']:
+#    species_definitions[sp] = {'max_coverage':0.5}
+
+adsorbate_interaction_model = 'first_order' #use "single site" interaction model
+
+interaction_response_function = 'smooth_piecewise_linear' #use "smooth piecewise linear" interactions
+
+interaction_fitting_mode = None
+
+cross_interaction_mode = 'geometric_mean' #use geometric mean for cross parameters
+
+interaction_scaling_constraint_dict = {
+                                'CO_t':[0,0,None],
+                                'H_t':[0,0,None],
+                                'CHO_t':[0,0,None],
+                          }
+
+interaction_strength = 1.0
+
+species_definitions['t']['interaction_response_parameters'] = {'cutoff':0.25,'smoothing':0.05}
+
+eHCO=0.7274
+
+eCO=2.4670
+
+eH=0.0
+
+# specify all interactions of CO with itself (self-interaction)
+
+# and the interactions with all other species
+
+# if no interaction is given the interaction of CO with all other species
+
+# is considered via the geometric mean sqrt(CO-self-interaction*species-self-interaction)
+
+species_definitions['CO_t'] = {
+                'self_interaction_parameter':[eCO],
+                'cross_interaction_parameters':
+                        {
+                        'H_t': [eHCO],
+                        'H2O-ele_t': [eHCO*1.08],
+                        'H-H2O-ele_t': [eHCO*0.7],
+                        'H-H_t': [eHCO*1.59],
+                        'CH-OH-ele_t':[eCO*1.],
+                        'OC-CO_t': [1.*eCO],
+                        'OCCO_t': [1.*eCO],
+                        'OCCO-H2O-ele_t': [1.1*eCO],
+                        'OCCOH_t': [0.44*eCO],
+                        'CO2-_t': [0.6*eCO],
+                        'CO2_t': [0.6*eCO],
+                        'COOH-H2O-ele_t':[0.6*eCO],
+                        'CO-_t':[1.*eCO],
+                        }
+                }
+
+#set all remaining species to the same parameters as CO
+
+for species in ['CHOH_t', 'CHO_t','CH-OH-ele_t','CH_t','H2O-CO-ele_t']:
+        species_definitions[species] = species_definitions['CO_t']
+
+species_definitions['OCCO_t'] = {
+        'self_interaction_parameter':[1*eCO],
+        'n_sites':2
+         }
+
+#set all remaining C2 species to the same parameters as OCCO
+
+#for sp in ['OCCOH_t','OC-CO_t','OCCO-H2O-ele_t','COOH-H2O-ele_t','COOH_t']:
+for sp in ['OCCOH_t','OC-CO_t','OCCO-H2O-ele_t','CO2-_t','COOH-H2O-ele_t','CO2_t','COOH_t']:
+        species_definitions[sp] = species_definitions['OCCO_t'].copy()
+
+#species_definitions['COOH_t']['n_sites']=1
+#species_definitions['COOH-H2O-ele_t']['n_sites']=1
+
+# for testing
+species_definitions['H_t'] = {}
+species_definitions['H-H_t'] = {}
+species_definitions['CO-_t'] = {}
+species_definitions['H2O-ele_t'] = {}
+species_definitions['H-H2O-ele_t'] = {}
+
+#species_list = ['OH_g', 'ele_g', 'H2O_g', 'CO2_g', 'CO_g', 'CH4_g', 'CH3CH2OH_g', 'H2_g', 't', 'CO_t', 'CHOH_t', 'CHO_t', 'CH-OH-ele_t', 'CH_t', 'H2O-CO-ele_t', 'OCCO_t', 'OCCOH_t', 'OC-CO_t', 'OCCO-H2O-ele_t', 'CO2-_t', 'COOH-H2O-ele_t', 'CO2_t', 'COOH_t', 'H_t', 'H-H_t', 'CO-_t', 'H2O-ele_t', 'H-H2O-ele_t']
+#for species in species_list:
+#        species_definitions[species]['sigma_params'] = [0.0, 0.0, 0.0]
+sigma_input=['CH',20.]
+voltage_diff_drop = 0.0

@@ -15,7 +15,7 @@ py"""
 from catmap import ReactionModel
 import catmap
 
-def catmap_kinetic_model(setup_file):
+def catmap_kinetic_model(setup_file, theta):
 
     # ReactionModel is the main class that is initialized with a setup-file
     model = ReactionModel(setup_file=setup_file)
@@ -28,12 +28,39 @@ def catmap_kinetic_model(setup_file):
 
     model.solver.compile() # compiles all templates, here (rate_constants) are needed
 
+    # Set up interaction model.
+    if model.adsorbate_interaction_model == 'first_order':
+        interaction_model = \
+            catmap.thermodynamics.FirstOrderInteractions(model)
+        interaction_model.get_interaction_info()
+        response_func = interaction_model.interaction_response_function
+        if not callable(response_func):
+            int_function = getattr(interaction_model,
+                                    response_func+'_response')
+            interaction_model.interaction_response_function = int_function
+        model.thermodynamics.__dict__['adsorbate_interactions'] = interaction_model
+    elif model.adsorbate_interaction_model in ['ideal',None]:
+        model.thermodynamics.adsorbate_interactions = None
+    else:
+        raise AttributeError(
+                'Invalid adsorbate_interaction_model specified.')
+
     descriptor_values = [descriptor_range[0] for descriptor_range in model.descriptor_ranges]
-    
+    rxn_parameters = model.scaler.get_rxn_parameters(descriptor_values)
+    n_tot = len(model.adsorbate_names) + len(model.transition_state_names)
+    energies = rxn_parameters[:n_tot]
+    if len(rxn_parameters) == n_tot + n_tot**2:
+        interaction_vector = rxn_parameters[-n_tot**2:]
+    elif len(rxn_parameters) == n_tot:
+        interaction_vector = [0]*n_tot**2
+    F = model.interaction_response_function if hasattr(model, 'interaction_response_function') else None
+    theta = [theta[species] for species in model.adsorbate_names] + len(model.transition_state_names) * [0.0]
+    _, Gf, _ = model.interaction_function(theta, energies, interaction_vector, F)
+
     energies = {
         k:v for k, v in zip(
             model.adsorbate_names + model.transition_state_names,
-            model.scaler.get_rxn_parameters(descriptor_values)
+            Gf
         )
     }
     for k, v in zip(model.gas_names, model.solver._gas_energies):
@@ -78,11 +105,12 @@ end
 Compute the free energies of all reactants in the microkinetic model from CatMAP.
 """
 function compute_catmap_free_energies(catmap_instance_path, params)
+    (; θ) = params
     starting_dir = pwd()
     catmap_instance_path = abspath(catmap_instance_path)
     cd(dirname(catmap_instance_path))
     try
-        free_energies = py"catmap_kinetic_model"(catmap_instance_path)
+        free_energies = py"catmap_kinetic_model"(catmap_instance_path, θ)
     finally
         cd(starting_dir)
     end
@@ -103,10 +131,10 @@ end
 Compute the free energies of all reactants in the microkinetic model from the CatmapInterface.
 """
 function compute_interface_free_energies(catmap_instance_path, params)
-    (; σ, ϕ_we, ϕ, local_pH) = params
+    (; θ, σ, ϕ_we, ϕ, local_pH) = params
     catmap_params   = parse_catmap_input(catmap_instance_path)    
     free_energies   = Dict(zip(keys(catmap_params.species_list), fill(0.0, length(catmap_params.species_list))))
-    CatmapInterface.compute_free_energies!(free_energies, catmap_params, σ, ϕ_we, ϕ, local_pH)
+    CatmapInterface.compute_free_energies!(free_energies, catmap_params, θ, σ, ϕ_we, ϕ, local_pH)
     free_energies
 end
 
@@ -133,19 +161,19 @@ models = [
         model                   = "CO₂-Reduction on Au with hbond corrections", 
         catmap_template_path    = "../data/Au-model-hbond/catmap_CO2R_template.mkm", 
         params_set              = map(
-            row -> (; zip([:ϕ_we    ,:local_pH  ,:T     ,:ϕ_pzc     ,:ϕ     ,:σ     ], [row; Cgap * (row[1] - row[5] - row[4])])...),
+            row -> (; zip([:θ                                                                                                                                                               ,:ϕ_we      ,:local_pH  ,:T     ,:ϕ_pzc     ,:ϕ     ,:σ     ], [row; Cgap * (row[2] - row[6] - row[5])])...),
             eachrow([
-                            -0.8    6.8         298.0   0.16        -0.80
-                            -0.8    6.8         298.0   0.16        -0.72
-                            -0.8    6.8         298.0   0.16        -0.64
-                            -0.8    6.8         298.0   0.16        -0.56
-                            -0.8    6.8         298.0   0.16        -0.48
-                            -0.8    6.8         298.0   0.16        -0.40
-                            -0.8    6.8         298.0   0.16        -0.32
-                            -0.8    6.8         298.0   0.16        -0.24
-                            -0.8    6.8         298.0   0.16        -0.16
-                            -0.8    6.8         298.0   0.16        -0.08
-                            -0.8    6.8         298.0   0.16        +0.00
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.80
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.72
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.64
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.56
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.48
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.40
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.32
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.16
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.08
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.24
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        +0.00
             ])
         )
     ),
@@ -153,19 +181,19 @@ models = [
         model                   = "CO₂-Reduction on Au with simple corrections", 
         catmap_template_path    = "../data/Au-model-simple/catmap_CO2R_template.mkm", 
         params_set              = map(
-            row -> (; zip([:ϕ_we    ,:local_pH  ,:T     ,:ϕ_pzc     ,:ϕ     ,:σ     ], [row; Cgap * (row[1] - row[5] - row[4])])...),
+            row -> (; zip([:θ                                                                                                                                                               ,:ϕ_we      ,:local_pH  ,:T     ,:ϕ_pzc     ,:ϕ     ,:σ     ], [row; Cgap * (row[2] - row[6] - row[5])])...),
             eachrow([
-                            -0.8    6.8         298.0   0.16        -0.80
-                            -0.8    6.8         298.0   0.16        -0.72
-                            -0.8    6.8         298.0   0.16        -0.64
-                            -0.8    6.8         298.0   0.16        -0.56
-                            -0.8    6.8         298.0   0.16        -0.48
-                            -0.8    6.8         298.0   0.16        -0.40
-                            -0.8    6.8         298.0   0.16        -0.32
-                            -0.8    6.8         298.0   0.16        -0.24
-                            -0.8    6.8         298.0   0.16        -0.16
-                            -0.8    6.8         298.0   0.16        -0.08
-                            -0.8    6.8         298.0   0.16        +0.00
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.80
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.72
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.64
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.56
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.48
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.40
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.32
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.16
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.08
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.24
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        +0.00
             ])
         )
     ),
@@ -173,19 +201,39 @@ models = [
         model                   = "CO₂-Reduction on Cu with simple corrections", 
         catmap_template_path    = "../data/Liu-model-simple/catmap_CO2R_template.mkm", 
         params_set              = map(
-            row -> (; zip([:ϕ_we    ,:local_pH  ,:T     ,:ϕ_pzc     ,:ϕ     ,:σ     ], [row; Cgap * (row[1] - row[5] - row[4])])...),
+            row -> (; zip([:θ                                                                                                                                                               ,:ϕ_we      ,:local_pH  ,:T     ,:ϕ_pzc     ,:ϕ     ,:σ     ], [row; Cgap * (row[2] - row[6] - row[5])])...),
             eachrow([
-                            -0.8    6.8         298.0   0.16        -0.80
-                            -0.8    6.8         298.0   0.16        -0.72
-                            -0.8    6.8         298.0   0.16        -0.64
-                            -0.8    6.8         298.0   0.16        -0.56
-                            -0.8    6.8         298.0   0.16        -0.48
-                            -0.8    6.8         298.0   0.16        -0.40
-                            -0.8    6.8         298.0   0.16        -0.32
-                            -0.8    6.8         298.0   0.16        -0.24
-                            -0.8    6.8         298.0   0.16        -0.16
-                            -0.8    6.8         298.0   0.16        -0.08
-                            -0.8    6.8         298.0   0.16        +0.00
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.80
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.72
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.64
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.56
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.48
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.40
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.32
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.16
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.08
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.24
+                            Dict("OCCO_t" => 0.01, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        +0.00
+            ])
+        )
+    ),
+    (;  
+        model                   = "CO₂-Reduction on Cu with simple corrections and first order adsorbate corrections", 
+        catmap_template_path    = "../data/Liu-model-first-order/catmap_CO2R_template.mkm", 
+        params_set              = map(
+            row -> (; zip([:θ                                                                                                                                                               ,:ϕ_we      ,:local_pH  ,:T     ,:ϕ_pzc     ,:ϕ     ,:σ     ], [row; Cgap * (row[2] - row[6] - row[5])])...),
+            eachrow([
+                            Dict("OCCO_t" => 0.2, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.80
+                            Dict("OCCO_t" => 0.2, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.72
+                            Dict("OCCO_t" => 0.2, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.64
+                            Dict("OCCO_t" => 0.2, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.56
+                            Dict("OCCO_t" => 0.2, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.48
+                            Dict("OCCO_t" => 0.2, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.40
+                            Dict("OCCO_t" => 0.2, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.32
+                            Dict("OCCO_t" => 0.2, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.16
+                            Dict("OCCO_t" => 0.2, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.08
+                            Dict("OCCO_t" => 0.2, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        -0.24
+                            Dict("OCCO_t" => 0.2, "CO2_t" => 0.01, "H_t" => 0.01, "CHOH_t" => 0.01, "CHO_t" => 0.01, "COOH_t" => 0.01, "CO_t" => 0.01, "CH_t"    => 0.01, "OCCOH_t" => 0.01)   -0.8        6.8         298.0   0.16        +0.00
             ])
         )
     ),
@@ -193,7 +241,7 @@ models = [
 
 @testset "CatmapInterface.jl" begin
     @testset "$model" for (model, catmap_template_path, params_set) in models
-        @testset "$(repr(params))" for params in params_set
+        @testset "$(params.ϕ_we)" for params in params_set
             test_free_energies(catmap_template_path, params)
         end
     end

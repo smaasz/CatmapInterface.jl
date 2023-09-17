@@ -17,22 +17,29 @@ $(SIGNATURES)
 
 Compute the Gibbs free energies of all species specified in the `catmap_params` by applying the specified correction modes.
 """
-function compute_free_energies!(free_energies, catmap_params::CatmapParams, σ, ϕ_we, ϕ, local_pH)
-    (; gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode) = catmap_params
+function compute_free_energies!(free_energies, catmap_params::CatmapParams, θ, σ, ϕ_we, ϕ, local_pH)
+    (; adsorbate_interaction_params, gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode) = catmap_params
+    (; adsorbate_interaction_model) = adsorbate_interaction_params
 
     for (s, (; formation_energy)) in catmap_params.species_list
         free_energies[s] += formation_energy
     end
 
+    adsorbate_interaction_correction!  = getfield(@__MODULE__, Symbol(adsorbate_interaction_model, "_adsorbate_interaction"))
     gas_thermo_correction!             = getfield(@__MODULE__, gas_thermo_mode)
     adsorbate_thermo_correction!       = getfield(@__MODULE__, adsorbate_thermo_mode)
     electrochemical_thermo_correction! = getfield(@__MODULE__, electrochemical_thermo_mode)
 
-    gas_thermo_correction!(free_energies, catmap_params)
-    adsorbate_thermo_correction!(free_energies, catmap_params)
+    adsorbate_interaction_correction!(free_energies, catmap_params, θ)
 
+    thermo_corrections = Dict(zip(keys(free_energies), zeros(valtype(free_energies), length(free_energies))))
+    gas_thermo_correction!(thermo_corrections, catmap_params)
+    adsorbate_thermo_correction!(thermo_corrections, catmap_params)
     # electrochemical corrections
-    electrochemical_thermo_correction!(free_energies, catmap_params, σ, ϕ_we, ϕ, local_pH)
+    electrochemical_thermo_correction!(thermo_corrections, catmap_params, σ, ϕ_we, ϕ, local_pH)
+    for (species, thermo_correction) in thermo_corrections
+        free_energies[species] += thermo_correction
+    end
     nothing
 end
 
@@ -53,19 +60,21 @@ function create_reaction_network(catmap_params::CatmapParams)
     (; species_list, T) = catmap_params
 
     @parameters σ ϕ_we ϕ local_pH
-    free_energies = Dict(zip(keys(species_list), fill(Num(0.0), length(species_list))))
-    compute_free_energies!(free_energies, catmap_params::CatmapParams, σ, ϕ_we, ϕ, local_pH)
-
     @variables t
-    vars        = Dict{String, Num}()
+    vars        = Dict{String, Num}() # converages and concentrations
+    θ           = Dict{String, Num}() # coverages
     activ_coefs = Dict{String, Num}()
     for (s, sp) in species_list
         if s =="H2O_g" || isa(sp, SiteSpecies) # site species and the solvent are not considered proper species
             as      = Symbol("a$s")
             vars[s] = first(@parameters $as)
-        elseif (isa(sp, FictiousSpecies) && s ≠ "ele_g") || isa(sp, AdsorbateSpecies) # fictious species and adsorbates have no activity coeff
+        elseif (isa(sp, FictiousSpecies) && s ≠ "ele_g") # fictious species and adsorbates have no activity coeff
             ss          = Symbol(s)
             vars[s]     = first(@species $ss(t))
+        elseif isa(sp, AdsorbateSpecies)
+            ss          = Symbol(s)
+            vars[s]     = first(@species $ss(t))
+            θ[s]        = vars[s]
         elseif (isa(sp, GasSpecies) && s ≠  "H2O_g")
             ss              = Symbol(s)
             vars[s]         = first(@species $ss(t))
@@ -73,6 +82,9 @@ function create_reaction_network(catmap_params::CatmapParams)
             activ_coefs[s]  = first(@parameters $gs)
         end
     end
+
+    free_energies = Dict(zip(keys(species_list), fill(Num(0.0), length(species_list))))
+    compute_free_energies!(free_energies, catmap_params::CatmapParams, θ, σ, ϕ_we, ϕ, local_pH)
 
     function process_reaction_side(reactants)
         @local_unitfactors mol dm

@@ -38,29 +38,39 @@ $(TYPEDFIELDS)
     tstate::Union{Nothing, TState}
 end
 
-@kwdef struct InteractionResponseParams
-    slope::Float64      = 1.0
-    cutoff::Float64     = 0.25
-    smoothing::Float64  = 0.05
-end
+"""
+$(TYPEDEF)
 
-@kwdef struct AdsorbateInteractionParams
+$(TYPEDFIELDS)
+"""
+struct AdsorbateInteractionParams
     """
     """
-    adsorbate_interaction_mode::Symbol = :ideal
+    adsorbate_interaction_model::Symbol
     """
     """
-    interaction_response_function::Symbol = :linear
+    interaction_response_function::Symbol
     """
     """
-    cross_interaction_mode::Symbol = :geometric_mean
+    cross_interaction_mode::Symbol
     """
     """
-    transition_state_cross_interaction_mode::Symbol = :intermediate_state
-    """
-    Parameters used to specify the exact form of the `interaction_response_function` in [`CatmapInterface.first_order_adsorbate_interaction`](@ref)
-    """
-    interaction_response_params::InteractionResponseParams = InteractionResponseParams()
+    transition_state_cross_interaction_mode::Symbol
+    function AdsorbateInteractionParams(; adsorbate_interaction_model::Symbol=:ideal, interaction_response_function::Symbol=:linear, cross_interaction_mode::Symbol=:geometric_mean, transition_state_cross_interaction_mode::Symbol = :intermediate_state)
+        if !isdefined(@__MODULE__, Symbol(adsorbate_interaction_model, "_adsorbate_interaction"))
+            throw(ArgumentError("The adsorbation interaction model=$adsorbate_interaction_model is not implemented"))
+        end
+        if !isdefined(@__MODULE__, Symbol(interaction_response_function, "_interaction_response"))
+            throw(ArgumentError("The interaction response function=$interaction_response_function is not implemented"))
+        end
+        if !(cross_interaction_mode in [:geometric_mean, :arithmetic_mean, :neglect])
+            throw(ArgumentError("The cross interaction mode=$cross_interaction_mode is not implemented"))
+        end
+        if !(transition_state_cross_interaction_mode in [:intermediate_state, :neglect])
+            throw(ArgumentError("The transition state cross interaction mode=$transition_state_cross_interaction_mode is not implemented"))
+        end
+        new(adsorbate_interaction_model, interaction_response_function, cross_interaction_mode, transition_state_cross_interaction_mode)
+    end
 end
 
 """
@@ -115,7 +125,7 @@ struct CatmapParams
     Parameter specifying the adsorbate interaction model
     """
     adsorbate_interaction_params::AdsorbateInteractionParams
-    function CatmapParams(; reactions, prefactors, species_list, gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode, bulk_pH, Uref, potential_reference_scale, T, adsorbate_interaction_params = AdsorbateInteractionParams())       
+    function CatmapParams(; reactions, prefactors, species_list, gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode, bulk_pH, Uref, potential_reference_scale, T, adsorbate_interaction_params)       
         if !(length(prefactors) == length(reactions))
             throw(ArgumentError("The number of prefactors must match the number of reactions"))
         end
@@ -146,7 +156,7 @@ struct CatmapParams
         if T < 0.0
             throw(ArgumentError("temperature T=$T must be positive"))
         end
-        new(reactions, prefactors, species_list, gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode, bulk_pH, Uref, potential_reference_scale, T)
+        new(reactions, prefactors, species_list, gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode, bulk_pH, Uref, potential_reference_scale, T, adsorbate_interaction_params)
     end
 end
 
@@ -328,6 +338,22 @@ function parse_energy_table(input_file_path)
     table
 end
 
+function get_adsorbate_interaction_params()
+    optional_args = []
+    for arg in fieldnames(AdsorbateInteractionParams)
+        local val
+        try
+            val = py"$$arg"
+        catch e
+            if !isa(e, PyCall.PyError)
+                rethrow(e)
+            end
+        else
+            push!(optional_args, arg => Symbol(val))
+        end
+    end
+    AdsorbateInteractionParams(; optional_args...)
+end
 
 """
 $(SIGNATURES) 
@@ -387,15 +413,16 @@ function parse_catmap_input(input_file_path::AbstractString)
     Uref                        = py"extrapolated_potential"
     potential_reference_scale   = py"potential_reference_scale"
     
-    
     gas_thermo_mode             = Symbol(py"gas_thermo_mode")
     adsorbate_thermo_mode       = Symbol(py"adsorbate_thermo_mode")
     electrochemical_thermo_mode = Symbol(py"electrochemical_thermo_mode")
+
+    adsorbate_interaction_params = get_adsorbate_interaction_params()
     
     species_list = specieslist(reactions, species_definitions, energy_table, surface_name; electrochemical_thermo_mode)
     
     T = 298
-    CatmapParams(; reactions, prefactors, species_list, gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode, bulk_pH, Uref, potential_reference_scale, T)
+    CatmapParams(; reactions, prefactors, species_list, gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode, bulk_pH, Uref, potential_reference_scale, T, adsorbate_interaction_params)
 end
 
 
@@ -450,6 +477,16 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
                     push!(optional_params, :sigma_params => (; a = sigma_params[2] / (μA/cm^2), b = sigma_params[1] / (μA/cm^2)^2))
                 end
             end
+            if haskey(species_def, :self_interaction_parameter)
+                (; self_interaction_parameter) = species_def
+                push!(optional_params, :self_interaction_param => self_interaction_parameter[1])
+            end
+            if haskey(species_def, :cross_interaction_parameters)
+                (; cross_interaction_parameters) = species_def
+                cross_interaction_parameters = Dict(species => convert(Float64, value[1]) for (species, value) in cross_interaction_parameters)
+                push!(optional_params, :cross_interaction_params => cross_interaction_parameters)
+            end
+
             coverage                            = 0.0
             (; site_names)                      = findspecies("", site, species_defs)
             site_name                           = site_names[1]
@@ -457,8 +494,15 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
             species_list[s]                     = AdsorbateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, optional_params...)
         elseif !isnothing(match_site)
             site            = match_site[:site]
-            (; site_names)  = findspecies("", site, species_defs)
-            species_list[s]  = SiteSpecies(0.0, site_names[1])
+            species_def     = findspecies("", site, species_defs)
+            (; site_names)  = species_def
+            optional_params = []
+            if haskey(species_def, :interaction_response_parameters)
+                (; interaction_response_parameters) = species_def
+                interaction_response_parameters     = [Symbol(k) => v for (k, v) in interaction_response_parameters]
+                push!(optional_params, :interaction_response_params => InteractionResponseParams(; interaction_response_parameters...))
+            end
+            species_list[s]  = SiteSpecies(; formation_energy=0.0, site_name=site_names[1], optional_params...)
         else
             throw(ArgumentError("species $s is not a valid ficitious gas, gas, adsorbate, or site"))
         end
@@ -487,11 +531,16 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
                             push!(optional_params, :sigma_params => (; a = sigma_params[2] / (μA/cm^2), b = sigma_params[1] / (μA/cm^2)^2))
                         end
                     end
+                    if haskey(species_def, :cross_interaction_parameters)
+                        (; cross_interaction_parameters) = species_def
+                        cross_interaction_parameters = Dict(species => value[1] for (species, value) in cross_interaction_parameters)
+                        push!(optional_params, :cross_interaction_params => cross_interaction_parameters)
+                    end
                     coverage                            = 0.0
                     (; site_names)                      = findspecies("", site, species_defs)
                     site_name                           = site_names[1]
                     (; formation_energy, frequencies)   = findspecies(species_name, energy_table; surface_name, site_name)
-                    species_list[component]         = TStateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, β=tstate.beta, between_species=[first.(educts); first.(products)], optional_params...)
+                    species_list[component]             = TStateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, β=tstate.beta, between_species=[first.(educts); first.(products)], optional_params...)
                 else
                     throw(ArgumentError("$(component) is not a valid transition state"))
                 end
