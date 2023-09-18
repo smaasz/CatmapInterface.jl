@@ -41,19 +41,27 @@ end
 """
 $(TYPEDEF)
 
+An `AdsorbateInteractionParams` struct can specify the model for adsorbate interaction model from the default
+`ideal` mean-field model to models where the adsorption energies are dependent on `first-order`terms in the 
+coverages of interacting adsorbates.
+
 $(TYPEDFIELDS)
 """
 struct AdsorbateInteractionParams
     """
+    Name of the adsorbate interaction model: `ideal` (default) or `first_order`
     """
     adsorbate_interaction_model::Symbol
     """
+    Name of the interaction response function used to weight the first order interactions: `linear` (default) or `piecewise_linear` or `smooth_piecewise_linear`
     """
     interaction_response_function::Symbol
     """
+    Name of the mode to interpolate cross-interaction terms between two adsorbates from their self-interaction terms: `geometric_mean` (default) or `arithmetic_mean` or `neglect` 
     """
     cross_interaction_mode::Symbol
     """
+    Name of the mode to interpolate cross-interaction terms between a transition state and an adsorbate: `intermediate` (default) or `neglect`
     """
     transition_state_cross_interaction_mode::Symbol
     function AdsorbateInteractionParams(; adsorbate_interaction_model::Symbol=:ideal, interaction_response_function::Symbol=:linear, cross_interaction_mode::Symbol=:geometric_mean, transition_state_cross_interaction_mode::Symbol = :intermediate_state)
@@ -338,6 +346,11 @@ function parse_energy_table(input_file_path)
     table
 end
 
+"""
+    get_adsorbate_interaction_params()
+
+Extract adsorbate interaction parameters from the included CatMAP input Python-file
+"""
 function get_adsorbate_interaction_params()
     optional_args = []
     for arg in fieldnames(AdsorbateInteractionParams)
@@ -426,6 +439,16 @@ function parse_catmap_input(input_file_path::AbstractString)
 end
 
 
+function push_sigma_params!(optional_params, species_def)
+    @local_unitfactors μA cm
+    if !haskey(species_def, :sigma_params)
+        throw(ArgumentError("To use the electrochemical_thermo_mode=hbond_surface_charge_density sigma_params need to be specified for the adsorbate $species_name"))
+    else
+        (; sigma_params) = species_def
+        push!(optional_params, :sigma_params => (; a = sigma_params[2] / (μA/cm^2), b = sigma_params[1] / (μA/cm^2)^2))
+    end
+end
+
 const re_fictious_gas   = r"^(?<species_name>ele|OH)_g$"
 const re_gas            = r"^(?<species_name>[A-Za-z0-9]+)_g$"
 const re_adsorbate      = r"^(?<species_name>[A-Za-z0-9]+)_(?<site>[^g])$"
@@ -438,7 +461,7 @@ $(SIGNATURES)
 Collect the specifications of all reactants in a list.
 """
 function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_table, surface_name; electrochemical_thermo_mode=:simple_electrochemical)
-    @local_unitfactors μA cm mol m Pa
+    @local_unitfactors mol m Pa
     henry_consts = py"henry_consts"
     # collect all species in a set
     species = Set{String}()
@@ -447,35 +470,34 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
         union!(species, first.(products))
     end
     species_list = Dict{String, AbstractSpecies}()
+    
     for s in species
         match_fictious  = match(re_fictious_gas,s)
         match_gas       = match(re_gas,         s)
         match_adsorbate = match(re_adsorbate,   s)
         match_site      = match(re_site,        s)
+        # Fictious species (e.g. OH_g)
         if !isnothing(match_fictious)
             species_name            = match_fictious[:species_name]
             (; pressure)            = findspecies(species_name, "g", species_defs)
             (; formation_energy)    = findspecies(species_name, energy_table)
             pressure                = species_defs[s]["pressure"] 
             species_list[s]         = FictiousSpecies(; species_name, formation_energy, pressure)
+        # Gas species (e.g. CO2_g)
         elseif !isnothing(match_gas)
             species_name                        = match_gas[:species_name]
             (; pressure)                        = findspecies(species_name, "g", species_defs)
             (; formation_energy, frequencies)   = findspecies(species_name, energy_table)
             henry_const                         = get(henry_consts, species_name, missing) * mol/(m^3 * Pa)
             species_list[s]                     = GasSpecies(; species_name, formation_energy, pressure, frequencies, henry_const)
+        # Adsorbed species (e.g. CO_t)
         elseif !isnothing(match_adsorbate)
             species_name                        = match_adsorbate[:species_name]
             site                                = match_adsorbate[:site]
             species_def                         = findspecies(species_name, site, species_defs)
             optional_params                     = []
             if electrochemical_thermo_mode == :hbond_surface_charge_density
-                if !haskey(species_def, :sigma_params)
-                    throw(ArgumentError("To use the electrochemical_thermo_mode=hbond_surface_charge_density sigma_params need to be specified for the adsorbate $species_name"))
-                else
-                    (; sigma_params) = species_def
-                    push!(optional_params, :sigma_params => (; a = sigma_params[2] / (μA/cm^2), b = sigma_params[1] / (μA/cm^2)^2))
-                end
+                push_sigma_params!(optional_params, species_def)
             end
             if haskey(species_def, :self_interaction_parameter)
                 (; self_interaction_parameter) = species_def
@@ -486,12 +508,12 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
                 cross_interaction_parameters = Dict(species => convert(Float64, value[1]) for (species, value) in cross_interaction_parameters)
                 push!(optional_params, :cross_interaction_params => cross_interaction_parameters)
             end
-
             coverage                            = 0.0
             (; site_names)                      = findspecies("", site, species_defs)
             site_name                           = site_names[1]
             (; formation_energy, frequencies)   = findspecies(species_name, energy_table; surface_name, site_name)
             species_list[s]                     = AdsorbateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, optional_params...)
+        # Electrode site (e.g. t)
         elseif !isnothing(match_site)
             site            = match_site[:site]
             species_def     = findspecies("", site, species_defs)
@@ -507,6 +529,7 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
             throw(ArgumentError("species $s is not a valid ficitious gas, gas, adsorbate, or site"))
         end
     end
+    # Transition States (e.g. COOH-H2O-ele_t)
     for (; educts, products, tstate) in reactions
         if isnothing(tstate)
             continue
@@ -524,12 +547,7 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
                     species_def                         = findspecies(species_name, site, species_defs)
                     optional_params                     = []
                     if electrochemical_thermo_mode == :hbond_surface_charge_density
-                        if !haskey(species_def, :sigma_params)
-                            throw(ArgumentError("To use the electrochemical_thermo_mode=hbond_surface_charge_density sigma_params need to be specified for the adsorbate $species_name"))
-                        else
-                            (; sigma_params) = species_def
-                            push!(optional_params, :sigma_params => (; a = sigma_params[2] / (μA/cm^2), b = sigma_params[1] / (μA/cm^2)^2))
-                        end
+                        push_sigma_params!(optional_params, species_def)
                     end
                     if haskey(species_def, :cross_interaction_parameters)
                         (; cross_interaction_parameters) = species_def

@@ -56,6 +56,7 @@ struct GasSpecies <: AbstractSpecies
     """
     frequencies::Vector{Float64}
     """
+    Henry constant used to convert between gas and liquid phase
     """
     henry_const::Union{Float64, Missing}
     function GasSpecies(; species_name, formation_energy, pressure, frequencies, henry_const)
