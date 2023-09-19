@@ -53,7 +53,7 @@ neglect_transition_cross_interaction(ϵ_rs) = 0.0
 
 Extract the interaction term if needed by applying the `cross_interaction_function`
 """
-function get_interaction_term(s::String, sp::AdsorbateSpecies, os::String, osp::AdsorbateSpecies, cross_interaction_function, species_list)
+function _get_interaction_term(s::String, sp::AdsorbateSpecies, os::String, osp::AdsorbateSpecies, cross_interaction_function, species_list)
     ϵ = nothing
     if s == os
         ϵ = sp.self_interaction_param
@@ -76,7 +76,7 @@ end
 
 Extract the interaction term if needed by applying the `transition_state_cross_interaction_function`
 """
-function get_interaction_term(s::String, sp::TStateSpecies, os::String, osp::AdsorbateSpecies, cross_interaction_function, species_list)
+function _get_interaction_term(s::String, sp::TStateSpecies, os::String, osp::AdsorbateSpecies, cross_interaction_function, species_list)
     ϵ = nothing
     ϵ = get(sp.cross_interaction_params, os, nothing)
     if isnothing(ϵ)
@@ -134,7 +134,7 @@ function first_order_adsorbate_interaction(energies, catmap_params::CatmapParams
                 response_value                  = response_function(θ_tot, interaction_response_params)
                 for (os, osp) in species_list
                     if isa(osp, AdsorbateSpecies)
-                        ϵ = get_interaction_term(s, sp, os, osp, interaction_function, species_list)
+                        ϵ = _get_interaction_term(s, sp, os, osp, interaction_function, species_list)
                         sp.cross_interaction_params[os] = ϵ
                         osp.cross_interaction_params[s] = ϵ
                         energies[s] += response_value * ϵ * ((θ[os] + 1.0e-15)/(θ_tot + 1.0e-15)) * eV

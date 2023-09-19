@@ -371,21 +371,26 @@ end
 """
 $(SIGNATURES) 
 
-Parse the content of a CatMAP input file needed for a Poisson-Nernst-Planck model.
+Parse the content of a CatMAP input file for creating microkinetic model.
 
 The input file is first interpreted by a Python interpreter and then parsed.
 The following information is used and must be specified:
 - rxn_expressions
 - prefactor_list
-- species_definitions (including ...)
+- species_definitions (must include an entry for every reactant, even if empty)
 - input_file (including the energy table)
-- surface_names
+- surface_names (currently only the use of exactly one surface is implemented)
 - bulk_ph
-- Uref
+- extrapolated_potential
 - potential_reference_scale
 - gas_thermo_mode
 - adsorbate_thermo_mode
 - electrochemical_thermo_mode
+Moreover, the following information is optional and default values exist
+- adsorbate_interaction_model (default: `ideal`)
+- cross_interaction_mode (only used if `adsorbate_interaction_model=first_order`, default: `geometric_mean`)
+- transition_state_cross_interaction_mode (only used if `adsorbate_interaction_model=first_order`, default: `intermediate_state`)
+- interaction_response_function (only used if `adsorbate_interaction_mode=first_order`, default: `smooth_piecewise_linear`)
 See [CatMAP documentation](https://catmap.readthedocs.io/en/latest/index.html) for details.
 """
 function parse_catmap_input(input_file_path::AbstractString)

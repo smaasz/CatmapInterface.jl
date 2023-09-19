@@ -3,8 +3,11 @@
 ## Corrections
 
 ```@docs
+CatmapInterface.first_order_adsorbate_interaction
+CatmapInterface.ideal_adsorbate_interaction
 CatmapInterface.ideal_gas
 CatmapInterface.harmonic_adsorbate
+CatmapInterface.simple_electrochemical
 CatmapInterface.hbond_surface_charge_density
 ```
 
