@@ -71,6 +71,9 @@ function get_interaction_term(s::String, sp::AbstractSpecies, os::String, osp::A
     else
         ϵ = get(sp.cross_interaction_params, os, nothing)
         if isnothing(ϵ)
+            ϵ = get(osp.cross_interaction_params, s, nothing)
+        end
+        if isnothing(ϵ)
             ϵ_s  = sp.self_interaction_param
             ϵ_os = osp.self_interaction_param
             ϵ    = cross_interaction_function(ϵ_s, ϵ_os)
@@ -115,6 +118,7 @@ function first_order_adsorbate_interaction(energies, catmap_params::CatmapParams
                 if isa(osp, AdsorbateSpecies)
                     ϵ = get_interaction_term(s, sp, os, osp, cross_interaction_function)
                     sp.cross_interaction_params[os] = ϵ
+                    osp.cross_interaction_params[s] = ϵ
                     energies[s] += response_value * ϵ * ((θ[os] + 1.0e-15)/(θ_tot + 1.0e-15)) * eV
                 end
             end
@@ -131,6 +135,9 @@ function first_order_adsorbate_interaction(energies, catmap_params::CatmapParams
                 if isa(osp, AdsorbateSpecies)
                     ϵ = get(sp.cross_interaction_params, os, nothing)
                     if isnothing(ϵ)
+                        ϵ = get(osp.cross_interaction_params, s, nothing)
+                    end
+                    if isnothing(ϵ)
                         ϵ_rs = mapreduce(+, sp.between_species) do reactant
                             if isa(species_list[reactant], AdsorbateSpecies)
                                 return species_list[reactant].cross_interaction_params[os]
@@ -140,6 +147,8 @@ function first_order_adsorbate_interaction(energies, catmap_params::CatmapParams
                         end
                         ϵ = transition_state_cross_interaction_function(ϵ_rs)
                     end
+                    sp.cross_interaction_params[os] = ϵ
+                    osp.cross_interaction_params[s] = ϵ
                     energies[s] += response_value * ϵ * ((θ[os] + 1.0e-15)/(θ_tot + 1.0e-15)) * eV
                 end 
             end
