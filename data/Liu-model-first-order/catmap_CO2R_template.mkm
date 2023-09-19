@@ -111,6 +111,8 @@ interaction_fitting_mode = None
 
 cross_interaction_mode = 'geometric_mean' #use geometric mean for cross parameters
 
+transition_state_cross_interaction_mode = 'intermediate_state'
+
 interaction_scaling_constraint_dict = {
                                 'CO_t':[0,0,None],
                                 'H_t':[0,0,None],

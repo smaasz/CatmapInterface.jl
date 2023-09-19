@@ -161,9 +161,9 @@ struct TStateSpecies <: AbstractSpecies
     """
     β::Float64
     """
-    Specifying the list of (stable) species the transition state is between
+    Specifying the list of (stable) species (with stoichiometric factor) the transition state is between
     """
-    between_species::Vector{String}
+    between_species::Vector{Pair{String, Int}}
     """
     Parameters specifying the electrochemcial correction to the formation energy due to surface charges: ``G_f(U=0, σ) ≈ G_f(U=0,σ=0)+a\\cdot σ + b\\cdot σ^2``
     """

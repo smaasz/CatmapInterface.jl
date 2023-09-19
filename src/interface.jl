@@ -61,7 +61,7 @@ struct AdsorbateInteractionParams
     """
     cross_interaction_mode::Symbol
     """
-    Name of the mode to interpolate cross-interaction terms between a transition state and an adsorbate: `intermediate` (default) or `neglect`
+    Name of the mode to interpolate cross-interaction terms between a transition state and an adsorbate: `intermediate` (default) `initial_state` or `final_state` or `neglect`
     """
     transition_state_cross_interaction_mode::Symbol
     function AdsorbateInteractionParams(; adsorbate_interaction_model::Symbol=:ideal, interaction_response_function::Symbol=:linear, cross_interaction_mode::Symbol=:geometric_mean, transition_state_cross_interaction_mode::Symbol = :intermediate_state)
@@ -71,10 +71,10 @@ struct AdsorbateInteractionParams
         if !isdefined(@__MODULE__, Symbol(interaction_response_function, "_interaction_response"))
             throw(ArgumentError("The interaction response function=$interaction_response_function is not implemented"))
         end
-        if !(cross_interaction_mode in [:geometric_mean, :arithmetic_mean, :neglect])
+        if !isdefined(@__MODULE__, Symbol(cross_interaction_mode, "_cross_interaction"))
             throw(ArgumentError("The cross interaction mode=$cross_interaction_mode is not implemented"))
         end
-        if !(transition_state_cross_interaction_mode in [:intermediate_state, :neglect])
+        if !isdefined(@__MODULE__, Symbol(transition_state_cross_interaction_mode, "_transition_cross_interaction"))
             throw(ArgumentError("The transition state cross interaction mode=$transition_state_cross_interaction_mode is not implemented"))
         end
         new(adsorbate_interaction_model, interaction_response_function, cross_interaction_mode, transition_state_cross_interaction_mode)
@@ -558,7 +558,7 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
                     (; site_names)                      = findspecies("", site, species_defs)
                     site_name                           = site_names[1]
                     (; formation_energy, frequencies)   = findspecies(species_name, energy_table; surface_name, site_name)
-                    species_list[component]             = TStateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, β=tstate.beta, between_species=[first.(educts); first.(products)], optional_params...)
+                    species_list[component]             = TStateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, β=tstate.beta, between_species=[first.(educts) .=> -last.(educts); products], optional_params...)
                 else
                     throw(ArgumentError("$(component) is not a valid transition state"))
                 end

@@ -39,32 +39,21 @@ function piecewise_linear_interaction_response(θ_tot, interaction_response_para
     smooth_piecewise_linear_interaction_response(θ_tot, InteractionResponseParams(; slope, cutoff, smoothing=0.0))
 end
 
-function geometric_mean_cross_interaction(ϵ_s, ϵ_os)
-    √(ϵ_s * ϵ_os)
-end
+geometric_mean_cross_interaction(ϵ_s, ϵ_os) = √(ϵ_s * ϵ_os)
+arithemtic_mean_cross_interaction(ϵ_s, ϵ_os) = (ϵ_s + ϵ_os) / 2
+neglect_cross_interaction(ϵ_s, ϵ_os) = 0.0
 
-function arithemtic_mean_cross_interaction(ϵ_s, ϵ_os)
-    (ϵ_s + ϵ_os) / 2
-end
-
-function neglect_cross_interaction(ϵ_s, ϵ_os)
-    0.0
-end
-
-function intermediate_state_transition_cross_interaction(ϵ_rs)
-    ϵ_rs * 0.5
-end
-
-function neglect_transition_cross_interaction(ϵ_rs)
-    ϵ_rs * 0.5
-end
+intermediate_state_transition_cross_interaction(ϵ_es, ϵ_ps) = 0.5 * (ϵ_es + ϵ_ps)
+final_state_transition_cross_interaction(ϵ_es, ϵ_ps) = ϵ_ps
+initial_state_transition_cross_interaction(ϵ_es, ϵ_ps) = ϵ_es
+neglect_transition_cross_interaction(ϵ_rs) = 0.0
 
 """
-$(SIGNATURES)
+    get_interaction_term(s::String, sp::AdsorbateSpecies, os::String, osp::AdsorbateSpecies, cross_interaction_function)
 
 Extract the interaction term if needed by applying the `cross_interaction_function`
 """
-function get_interaction_term(s::String, sp::AbstractSpecies, os::String, osp::AbstractSpecies, cross_interaction_function)
+function get_interaction_term(s::String, sp::AdsorbateSpecies, os::String, osp::AdsorbateSpecies, cross_interaction_function, species_list)
     ϵ = nothing
     if s == os
         ϵ = sp.self_interaction_param
@@ -82,7 +71,35 @@ function get_interaction_term(s::String, sp::AbstractSpecies, os::String, osp::A
     return ϵ
 end
 
-function coverage_of_site(site, species_list, θ)
+"""
+    get_interaction_term(s::String, sp::TStateSpecies, os::String, osp::AdsorbateSpecies, cross_interaction_function)
+
+Extract the interaction term if needed by applying the `transition_state_cross_interaction_function`
+"""
+function get_interaction_term(s::String, sp::TStateSpecies, os::String, osp::AdsorbateSpecies, cross_interaction_function, species_list)
+    ϵ = nothing
+    ϵ = get(sp.cross_interaction_params, os, nothing)
+    if isnothing(ϵ)
+        ϵ = get(osp.cross_interaction_params, s, nothing)
+    end
+    if isnothing(ϵ)
+        ϵ_es = 0.0
+        ϵ_ps = 0.0
+        for (reactant, factor) in sp.between_species
+            if isa(species_list[reactant], AdsorbateSpecies)
+                if factor > 0
+                    ϵ_ps += factor * species_list[reactant].cross_interaction_params[os]
+                else
+                    ϵ_es += -factor * species_list[reactant].cross_interaction_params[os]
+                end
+            end
+        end
+        ϵ = cross_interaction_function(ϵ_es, ϵ_ps)
+    end
+    return ϵ
+end
+
+function _coverage_of_site(site, species_list, θ)
     θ_tot = 0.0
     for (s, sp) in species_list
         if isa(sp, AdsorbateSpecies) && (site == sp.site)
@@ -108,49 +125,21 @@ function first_order_adsorbate_interaction(energies, catmap_params::CatmapParams
     cross_interaction_function                  = getfield(@__MODULE__, Symbol(cross_interaction_mode, "_cross_interaction"))
     transition_state_cross_interaction_function = getfield(@__MODULE__, Symbol(transition_state_cross_interaction_mode, "_transition_cross_interaction"))
 
-    for (s, sp) in species_list
-        if isa(sp, AdsorbateSpecies)
-            (; site)                        = sp
-            θ_tot                           = coverage_of_site(site, species_list, θ)
-            (; interaction_response_params) = species_list["_$site"]
-            response_value                  = response_function(θ_tot, interaction_response_params)
-            for (os, osp) in species_list
-                if isa(osp, AdsorbateSpecies)
-                    ϵ = get_interaction_term(s, sp, os, osp, cross_interaction_function)
-                    sp.cross_interaction_params[os] = ϵ
-                    osp.cross_interaction_params[s] = ϵ
-                    energies[s] += response_value * ϵ * ((θ[os] + 1.0e-15)/(θ_tot + 1.0e-15)) * eV
+    for (Species, interaction_function) in [(AdsorbateSpecies, cross_interaction_function), (TStateSpecies, transition_state_cross_interaction_function)]
+        for (s, sp) in species_list
+            if isa(sp, Species)
+                (; site)                        = sp
+                θ_tot                           = _coverage_of_site(site, species_list, θ)
+                (; interaction_response_params) = species_list["_$site"]
+                response_value                  = response_function(θ_tot, interaction_response_params)
+                for (os, osp) in species_list
+                    if isa(osp, AdsorbateSpecies)
+                        ϵ = get_interaction_term(s, sp, os, osp, interaction_function, species_list)
+                        sp.cross_interaction_params[os] = ϵ
+                        osp.cross_interaction_params[s] = ϵ
+                        energies[s] += response_value * ϵ * ((θ[os] + 1.0e-15)/(θ_tot + 1.0e-15)) * eV
+                    end
                 end
-            end
-        end
-    end
-
-    for (s, sp) in species_list
-        if isa(sp, TStateSpecies)
-            (; site)                        = sp
-            θ_tot                           = coverage_of_site(site, species_list, θ)
-            (; interaction_response_params) = species_list["_$site"]
-            response_value                  = response_function(θ_tot, interaction_response_params)
-            for (os, osp) in species_list
-                if isa(osp, AdsorbateSpecies)
-                    ϵ = get(sp.cross_interaction_params, os, nothing)
-                    if isnothing(ϵ)
-                        ϵ = get(osp.cross_interaction_params, s, nothing)
-                    end
-                    if isnothing(ϵ)
-                        ϵ_rs = mapreduce(+, sp.between_species) do reactant
-                            if isa(species_list[reactant], AdsorbateSpecies)
-                                return species_list[reactant].cross_interaction_params[os]
-                            else
-                                return 0.0
-                            end
-                        end
-                        ϵ = transition_state_cross_interaction_function(ϵ_rs)
-                    end
-                    sp.cross_interaction_params[os] = ϵ
-                    osp.cross_interaction_params[s] = ϵ
-                    energies[s] += response_value * ϵ * ((θ[os] + 1.0e-15)/(θ_tot + 1.0e-15)) * eV
-                end 
             end
         end
     end
@@ -200,14 +189,13 @@ function harmonic_adsorbate(energies, catmap_params::CatmapParams)
         end
     end
     for (s, sp) in species_list
-        
         if isa(sp, TStateSpecies)
             if !isempty(sp.frequencies)
                 (; frequencies) = sp
                 energies[s] += py"get_thermal_correction_adsorbate"(T, frequencies * (h * c_0 / eV)) * eV
             else
                 (; between_species) = sp
-                for bs in between_species
+                for bs in first.(between_species)
                     if isa(species_list[bs], AdsorbateSpecies)
                         thermo_correction = energies[bs]
                         energies[s] += 0.5 * thermo_correction
