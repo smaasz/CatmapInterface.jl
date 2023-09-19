@@ -351,7 +351,7 @@ end
 
 Extract adsorbate interaction parameters from the included CatMAP input Python-file
 """
-function get_adsorbate_interaction_params()
+function _get_adsorbate_interaction_params()
     optional_args = []
     for arg in fieldnames(AdsorbateInteractionParams)
         local val
@@ -430,7 +430,7 @@ function parse_catmap_input(input_file_path::AbstractString)
     adsorbate_thermo_mode       = Symbol(py"adsorbate_thermo_mode")
     electrochemical_thermo_mode = Symbol(py"electrochemical_thermo_mode")
 
-    adsorbate_interaction_params = get_adsorbate_interaction_params()
+    adsorbate_interaction_params = _get_adsorbate_interaction_params()
     
     species_list = specieslist(reactions, species_definitions, energy_table, surface_name; electrochemical_thermo_mode)
     
@@ -439,7 +439,7 @@ function parse_catmap_input(input_file_path::AbstractString)
 end
 
 
-function push_sigma_params!(optional_params, species_def)
+function _push_sigma_params!(optional_params, species_def)
     @local_unitfactors μA cm
     if !haskey(species_def, :sigma_params)
         throw(ArgumentError("To use the electrochemical_thermo_mode=hbond_surface_charge_density sigma_params need to be specified for the adsorbate $species_name"))
@@ -447,6 +447,22 @@ function push_sigma_params!(optional_params, species_def)
         (; sigma_params) = species_def
         push!(optional_params, :sigma_params => (; a = sigma_params[2] / (μA/cm^2), b = sigma_params[1] / (μA/cm^2)^2))
     end
+end
+
+function _parse_cross_interaction_params(species, cross_interaction_parameters, species_list)
+    cross_interaction_params = Dict{String, Float64}()
+    for (other_species, value) in cross_interaction_parameters
+        if length(value) > 1
+            @warn "Currently specifying cross interaction parameters for multiple surfaces is not implemented. Only the first value for $species interaction with $other_species will be used."
+        end
+        value = convert(Float64, value[1])
+        if haskey(species_list, other_species) && (isa(species_list[other_species], AdsorbateSpecies) || isa(species_list[other_species], TStateSpecies)) && haskey(species_list[other_species].cross_interaction_params, species) && (species_list[other_species].cross_interaction_params[species] != value)
+            throw(ArgumentError("The matrix of interaction coefficients must be symmetric but there are two different values for $species and $other_species"))
+        else
+            cross_interaction_params[other_species] = value
+        end
+    end
+    cross_interaction_params
 end
 
 const re_fictious_gas   = r"^(?<species_name>ele|OH)_g$"
@@ -497,7 +513,7 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
             species_def                         = findspecies(species_name, site, species_defs)
             optional_params                     = []
             if electrochemical_thermo_mode == :hbond_surface_charge_density
-                push_sigma_params!(optional_params, species_def)
+                _push_sigma_params!(optional_params, species_def)
             end
             if haskey(species_def, :self_interaction_parameter)
                 (; self_interaction_parameter) = species_def
@@ -505,8 +521,8 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
             end
             if haskey(species_def, :cross_interaction_parameters)
                 (; cross_interaction_parameters) = species_def
-                cross_interaction_parameters = Dict(species => convert(Float64, value[1]) for (species, value) in cross_interaction_parameters)
-                push!(optional_params, :cross_interaction_params => cross_interaction_parameters)
+                cross_interaction_params = _parse_cross_interaction_params(s, cross_interaction_parameters, species_list)
+                push!(optional_params, :cross_interaction_params => cross_interaction_params)
             end
             coverage                            = 0.0
             (; site_names)                      = findspecies("", site, species_defs)
@@ -547,12 +563,12 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
                     species_def                         = findspecies(species_name, site, species_defs)
                     optional_params                     = []
                     if electrochemical_thermo_mode == :hbond_surface_charge_density
-                        push_sigma_params!(optional_params, species_def)
+                        _push_sigma_params!(optional_params, species_def)
                     end
                     if haskey(species_def, :cross_interaction_parameters)
                         (; cross_interaction_parameters) = species_def
-                        cross_interaction_parameters = Dict(species => value[1] for (species, value) in cross_interaction_parameters)
-                        push!(optional_params, :cross_interaction_params => cross_interaction_parameters)
+                        cross_interaction_params = _parse_cross_interaction_params(component, cross_interaction_parameters, species_list)
+                        push!(optional_params, :cross_interaction_params => cross_interaction_params)
                     end
                     coverage                            = 0.0
                     (; site_names)                      = findspecies("", site, species_defs)
