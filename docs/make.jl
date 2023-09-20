@@ -26,7 +26,7 @@ function build_all_notebooks()
 end
 
 function mkdocs()
-    generate html for notebooks
+    # generate html for notebooks
     notebook_md_dir  = joinpath(@__DIR__,"src","notebooks")
     rm(notebook_md_dir,force=true,recursive=true)
     mkdir(notebook_md_dir)
