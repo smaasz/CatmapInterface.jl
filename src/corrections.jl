@@ -1,4 +1,151 @@
 """
+"""
+function ideal_adsorbate_interaction(energies, catmap_params, coverages)
+    nothing
+end
+
+    
+# c_0 = 0.0
+# if θ_tot <= x0
+#     c_0 = 0.0
+# elseif θ_tot <= x1
+#     α = slope/(2*(x1-x0))
+#     c_0 = (α * (θ_tot - x0)^2)/θ_tot
+#     #dC = alpha*(1-(x0/theta_tot)**2)
+#     #d2C = (2*alpha*x0**2)/(theta_tot**3)
+# else
+#     c_0 = slope*(θ_tot - cutoff)/θ_tot
+#     # dC = slope*(cutoff/(theta_tot**2))
+#     # d2C = (-2*slope*cutoff)/(theta_tot**3)
+# end
+# c_0
+
+function smooth_piecewise_linear_interaction_response(θ_tot, interaction_response_params::InteractionResponseParams)
+    (; slope, cutoff, smoothing) = interaction_response_params
+    θ_1 = min(max(0.0, θ_tot - (cutoff - smoothing)), 2 * smoothing)
+    θ_2 = max(0.0, θ_tot - (cutoff + smoothing))
+
+    α   = smoothing > 0 ? slope / (4 * smoothing) : 0.0
+    (α * θ_1^2 + slope * θ_2)
+end
+
+function linear_interaction_response(θ_tot, interaction_response_params::InteractionResponseParams)
+    (; slope) = interaction_response_params
+    smooth_piecewise_linear_interaction_response(θ_tot, InteractionResponseParams(; slope, cutoff=0.0, smoothing=0.0))
+end
+
+function piecewise_linear_interaction_response(θ_tot, interaction_response_params::InteractionResponseParams)
+    (; slope, cutoff) = interaction_response_params
+    smooth_piecewise_linear_interaction_response(θ_tot, InteractionResponseParams(; slope, cutoff, smoothing=0.0))
+end
+
+geometric_mean_cross_interaction(ϵ_s, ϵ_os) = √(ϵ_s * ϵ_os)
+arithemtic_mean_cross_interaction(ϵ_s, ϵ_os) = (ϵ_s + ϵ_os) / 2
+neglect_cross_interaction(ϵ_s, ϵ_os) = 0.0
+
+intermediate_state_transition_cross_interaction(ϵ_es, ϵ_ps) = 0.5 * (ϵ_es + ϵ_ps)
+final_state_transition_cross_interaction(ϵ_es, ϵ_ps) = ϵ_ps
+initial_state_transition_cross_interaction(ϵ_es, ϵ_ps) = ϵ_es
+neglect_transition_cross_interaction(ϵ_rs) = 0.0
+
+"""
+    get_interaction_term(s::String, sp::AdsorbateSpecies, os::String, osp::AdsorbateSpecies, cross_interaction_function)
+
+Extract the interaction term if needed by applying the `cross_interaction_function`
+"""
+function _get_interaction_term(s::String, sp::AdsorbateSpecies, os::String, osp::AdsorbateSpecies, cross_interaction_function, species_list)
+    ϵ = nothing
+    if s == os
+        ϵ = sp.self_interaction_param
+    else
+        ϵ = get(sp.cross_interaction_params, os, nothing)
+        if isnothing(ϵ)
+            ϵ = get(osp.cross_interaction_params, s, nothing)
+        end
+        if isnothing(ϵ)
+            ϵ_s  = sp.self_interaction_param
+            ϵ_os = osp.self_interaction_param
+            ϵ    = cross_interaction_function(ϵ_s, ϵ_os)
+        end
+    end 
+    return ϵ
+end
+
+"""
+    get_interaction_term(s::String, sp::TStateSpecies, os::String, osp::AdsorbateSpecies, cross_interaction_function)
+
+Extract the interaction term if needed by applying the `transition_state_cross_interaction_function`
+"""
+function _get_interaction_term(s::String, sp::TStateSpecies, os::String, osp::AdsorbateSpecies, cross_interaction_function, species_list)
+    ϵ = nothing
+    ϵ = get(sp.cross_interaction_params, os, nothing)
+    if isnothing(ϵ)
+        ϵ = get(osp.cross_interaction_params, s, nothing)
+    end
+    if isnothing(ϵ)
+        ϵ_es = 0.0
+        ϵ_ps = 0.0
+        for (reactant, factor) in sp.between_species
+            if isa(species_list[reactant], AdsorbateSpecies)
+                if factor > 0
+                    ϵ_ps += factor * species_list[reactant].cross_interaction_params[os]
+                else
+                    ϵ_es += -factor * species_list[reactant].cross_interaction_params[os]
+                end
+            end
+        end
+        ϵ = cross_interaction_function(ϵ_es, ϵ_ps)
+    end
+    return ϵ
+end
+
+function _coverage_of_site(site, species_list, θ)
+    θ_tot = 0.0
+    for (s, sp) in species_list
+        if isa(sp, AdsorbateSpecies) && (site == sp.site)
+            θ_tot += θ[s]
+        end
+    end
+    θ_tot
+end
+
+"""
+$(SIGNATURES)
+
+Add correction terms to the adsorbation energies based on first order interactions between the adsorbates. 
+
+This adsorbation interaction model is expained in ![CatMAP's documentation](https://catmap.readthedocs.io/en/latest/topics/including_adsorbate_adsorbate_interactions.html#coverage-dependent-adsorption-eneriges) and in this ![issue](https://github.com/smaasz/CatmapInterface.jl/issues/10)
+"""
+function first_order_adsorbate_interaction(energies, catmap_params::CatmapParams, θ)
+    @local_unitfactors eV
+    (; species_list, adsorbate_interaction_params) = catmap_params
+    (; interaction_response_function, cross_interaction_mode, transition_state_cross_interaction_mode) = adsorbate_interaction_params
+
+    response_function                           = getfield(@__MODULE__, Symbol(interaction_response_function, "_interaction_response"))
+    cross_interaction_function                  = getfield(@__MODULE__, Symbol(cross_interaction_mode, "_cross_interaction"))
+    transition_state_cross_interaction_function = getfield(@__MODULE__, Symbol(transition_state_cross_interaction_mode, "_transition_cross_interaction"))
+
+    for (Species, interaction_function) in [(AdsorbateSpecies, cross_interaction_function), (TStateSpecies, transition_state_cross_interaction_function)]
+        for (s, sp) in species_list
+            if isa(sp, Species)
+                (; site)                        = sp
+                θ_tot                           = _coverage_of_site(site, species_list, θ)
+                (; interaction_response_params) = species_list["_$site"]
+                response_value                  = response_function(θ_tot, interaction_response_params)
+                for (os, osp) in species_list
+                    if isa(osp, AdsorbateSpecies)
+                        ϵ = _get_interaction_term(s, sp, os, osp, interaction_function, species_list)
+                        sp.cross_interaction_params[os] = ϵ
+                        osp.cross_interaction_params[s] = ϵ
+                        energies[s] += response_value * ϵ * ((θ[os] + 1.0e-15)/(θ_tot + 1.0e-15)) * eV
+                    end
+                end
+            end
+        end
+    end
+end
+
+"""
 $(SIGNATURES)
 
 Add thermodynamic correction terms for all gas species using the ideal gas approximation.
@@ -42,17 +189,15 @@ function harmonic_adsorbate(energies, catmap_params::CatmapParams)
         end
     end
     for (s, sp) in species_list
-        
         if isa(sp, TStateSpecies)
             if !isempty(sp.frequencies)
                 (; frequencies) = sp
                 energies[s] += py"get_thermal_correction_adsorbate"(T, frequencies * (h * c_0 / eV)) * eV
             else
                 (; between_species) = sp
-                for bs in between_species
+                for bs in first.(between_species)
                     if isa(species_list[bs], AdsorbateSpecies)
-                        (; formation_energy) = species_list[bs]
-                        thermo_correction = energies[bs] - formation_energy
+                        thermo_correction = energies[bs]
                         energies[s] += 0.5 * thermo_correction
                     end
                 end

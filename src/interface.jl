@@ -38,6 +38,48 @@ $(TYPEDFIELDS)
     tstate::Union{Nothing, TState}
 end
 
+"""
+$(TYPEDEF)
+
+An `AdsorbateInteractionParams` struct can specify the model for adsorbate interaction model from the default
+`ideal` mean-field model to models where the adsorption energies are dependent on `first-order`terms in the 
+coverages of interacting adsorbates.
+
+$(TYPEDFIELDS)
+"""
+struct AdsorbateInteractionParams
+    """
+    Name of the adsorbate interaction model: `ideal` (default) or `first_order`
+    """
+    adsorbate_interaction_model::Symbol
+    """
+    Name of the interaction response function used to weight the first order interactions: `linear` (default) or `piecewise_linear` or `smooth_piecewise_linear`
+    """
+    interaction_response_function::Symbol
+    """
+    Name of the mode to interpolate cross-interaction terms between two adsorbates from their self-interaction terms: `geometric_mean` (default) or `arithmetic_mean` or `neglect` 
+    """
+    cross_interaction_mode::Symbol
+    """
+    Name of the mode to interpolate cross-interaction terms between a transition state and an adsorbate: `intermediate` (default) `initial_state` or `final_state` or `neglect`
+    """
+    transition_state_cross_interaction_mode::Symbol
+    function AdsorbateInteractionParams(; adsorbate_interaction_model::Symbol=:ideal, interaction_response_function::Symbol=:linear, cross_interaction_mode::Symbol=:geometric_mean, transition_state_cross_interaction_mode::Symbol = :intermediate_state)
+        if !isdefined(@__MODULE__, Symbol(adsorbate_interaction_model, "_adsorbate_interaction"))
+            throw(ArgumentError("The adsorbation interaction model=$adsorbate_interaction_model is not implemented"))
+        end
+        if !isdefined(@__MODULE__, Symbol(interaction_response_function, "_interaction_response"))
+            throw(ArgumentError("The interaction response function=$interaction_response_function is not implemented"))
+        end
+        if !isdefined(@__MODULE__, Symbol(cross_interaction_mode, "_cross_interaction"))
+            throw(ArgumentError("The cross interaction mode=$cross_interaction_mode is not implemented"))
+        end
+        if !isdefined(@__MODULE__, Symbol(transition_state_cross_interaction_mode, "_transition_cross_interaction"))
+            throw(ArgumentError("The transition state cross interaction mode=$transition_state_cross_interaction_mode is not implemented"))
+        end
+        new(adsorbate_interaction_model, interaction_response_function, cross_interaction_mode, transition_state_cross_interaction_mode)
+    end
+end
 
 """
 $(TYPEDEF)
@@ -87,7 +129,11 @@ struct CatmapParams
     Temperature in the bulk
     """
     T::Float64
-    function CatmapParams(; reactions, prefactors, species_list, gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode, bulk_pH, Uref, potential_reference_scale, T)       
+    """
+    Parameter specifying the adsorbate interaction model
+    """
+    adsorbate_interaction_params::AdsorbateInteractionParams
+    function CatmapParams(; reactions, prefactors, species_list, gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode, bulk_pH, Uref, potential_reference_scale, T, adsorbate_interaction_params)       
         if !(length(prefactors) == length(reactions))
             throw(ArgumentError("The number of prefactors must match the number of reactions"))
         end
@@ -118,7 +164,7 @@ struct CatmapParams
         if T < 0.0
             throw(ArgumentError("temperature T=$T must be positive"))
         end
-        new(reactions, prefactors, species_list, gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode, bulk_pH, Uref, potential_reference_scale, T)
+        new(reactions, prefactors, species_list, gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode, bulk_pH, Uref, potential_reference_scale, T, adsorbate_interaction_params)
     end
 end
 
@@ -170,7 +216,7 @@ julia> CatmapInterface.parse_reaction("CO*_t <-> CO_g + *_t")
 CatmapInterface.ParsedReaction(["CO_t" => 1], ["CO_g" => 1, "_t" => 1], nothing)
 
 julia> CatmapInterface.parse_reaction("COOH*_t + H2O_g + ele_g <-> COOH-H2O-ele_t <-> CO*_t + H2O_g + OH_g + *_t; beta=0.5")
-CatmapInterface.ParsedReaction(["COOH_t" => 1, "H2O_g" => 1, "ele_g" => 1], ["CO_t" => 1, "H2O_g" => 1, "OH_g" => 1, "_t" => 1], CatmapInterface.TState("COOH-H2O-ele_t", 0.5))
+CatmapInterface.ParsedReaction(["COOH_t" => 1, "H2O_g" => 1, "ele_g" => 1], ["CO_t" => 1, "H2O_g" => 1, "OH_g" => 1, "_t" => 1], CatmapInterface.TState(["COOH-H2O-ele_t" => 1], 0.5))
 ```
 """
 function parse_reaction(r::AbstractString; beta=nothing)
@@ -300,25 +346,51 @@ function parse_energy_table(input_file_path)
     table
 end
 
+"""
+    get_adsorbate_interaction_params()
+
+Extract adsorbate interaction parameters from the included CatMAP input Python-file
+"""
+function _get_adsorbate_interaction_params()
+    optional_args = []
+    for arg in fieldnames(AdsorbateInteractionParams)
+        local val
+        try
+            val = py"$$arg"
+        catch e
+            if !isa(e, PyCall.PyError)
+                rethrow(e)
+            end
+        else
+            push!(optional_args, arg => Symbol(val))
+        end
+    end
+    AdsorbateInteractionParams(; optional_args...)
+end
 
 """
 $(SIGNATURES) 
 
-Parse the content of a CatMAP input file needed for a Poisson-Nernst-Planck model.
+Parse the content of a CatMAP input file for creating microkinetic model.
 
 The input file is first interpreted by a Python interpreter and then parsed.
 The following information is used and must be specified:
-- rxn_expressions
-- prefactor_list
-- species_definitions (including ...)
-- input_file (including the energy table)
-- surface_names
-- bulk_ph
-- Uref
-- potential_reference_scale
-- gas_thermo_mode
-- adsorbate_thermo_mode
-- electrochemical_thermo_mode
+- `rxn_expressions`
+- `prefactor_list`
+- `species_definitions` (must include an entry for every reactant, even if empty)
+- `input_file` (including the energy table)
+- `surface_names` (currently only the use of exactly one surface is implemented)
+- `bulk_ph`
+- `extrapolated_potential`
+- `potential_reference_scale`
+- `gas_thermo_mode` (options: `ideal_gas`)
+- `adsorbate_thermo_mode` (options: `harmonic_adsorbate`)
+- `electrochemical_thermo_mode` (options: `simple_electrochemical`, `hbond_surface_charge_density`)
+Moreover, the following information is optional and default values exist
+- `adsorbate_interaction_model` (options: `ideal` (default), `first_order`)
+- `cross_interaction_mode` (only used if `adsorbate_interaction_model=first_order`, options: `geometric_mean` (default), `arithmetic_mean`, `neglect`)
+- `transition_state_cross_interaction_mode` (only used if `adsorbate_interaction_model=first_order`, options: `intermediate_state` (default), `initial_state`, `final_state`, `neglect`)
+- `interaction_response_function` (only used if `adsorbate_interaction_mode=first_order`, default: `smooth_piecewise_linear`)
 See [CatMAP documentation](https://catmap.readthedocs.io/en/latest/index.html) for details.
 """
 function parse_catmap_input(input_file_path::AbstractString)
@@ -359,17 +431,44 @@ function parse_catmap_input(input_file_path::AbstractString)
     Uref                        = py"extrapolated_potential"
     potential_reference_scale   = py"potential_reference_scale"
     
-    
     gas_thermo_mode             = Symbol(py"gas_thermo_mode")
     adsorbate_thermo_mode       = Symbol(py"adsorbate_thermo_mode")
     electrochemical_thermo_mode = Symbol(py"electrochemical_thermo_mode")
+
+    adsorbate_interaction_params = _get_adsorbate_interaction_params()
     
     species_list = specieslist(reactions, species_definitions, energy_table, surface_name; electrochemical_thermo_mode)
     
     T = 298
-    CatmapParams(; reactions, prefactors, species_list, gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode, bulk_pH, Uref, potential_reference_scale, T)
+    CatmapParams(; reactions, prefactors, species_list, gas_thermo_mode, adsorbate_thermo_mode, electrochemical_thermo_mode, bulk_pH, Uref, potential_reference_scale, T, adsorbate_interaction_params)
 end
 
+
+function _push_sigma_params!(optional_params, species_def)
+    @local_unitfactors μA cm
+    if !haskey(species_def, :sigma_params)
+        throw(ArgumentError("To use the electrochemical_thermo_mode=hbond_surface_charge_density sigma_params need to be specified for the adsorbate $species_name"))
+    else
+        (; sigma_params) = species_def
+        push!(optional_params, :sigma_params => (; a = sigma_params[2] / (μA/cm^2), b = sigma_params[1] / (μA/cm^2)^2))
+    end
+end
+
+function _parse_cross_interaction_params(species, cross_interaction_parameters, species_list)
+    cross_interaction_params = Dict{String, Float64}()
+    for (other_species, value) in cross_interaction_parameters
+        if length(value) > 1
+            @warn "Currently specifying cross interaction parameters for multiple surfaces is not implemented. Only the first value for $species interaction with $other_species will be used."
+        end
+        value = convert(Float64, value[1])
+        if haskey(species_list, other_species) && (isa(species_list[other_species], AdsorbateSpecies) || isa(species_list[other_species], TStateSpecies)) && haskey(species_list[other_species].cross_interaction_params, species) && (species_list[other_species].cross_interaction_params[species] != value)
+            throw(ArgumentError("The matrix of interaction coefficients must be symmetric but there are two different values for $species and $other_species"))
+        else
+            cross_interaction_params[other_species] = value
+        end
+    end
+    cross_interaction_params
+end
 
 const re_fictious_gas   = r"^(?<species_name>ele|OH)_g$"
 const re_gas            = r"^(?<species_name>[A-Za-z0-9]+)_g$"
@@ -383,7 +482,7 @@ $(SIGNATURES)
 Collect the specifications of all reactants in a list.
 """
 function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_table, surface_name; electrochemical_thermo_mode=:simple_electrochemical)
-    @local_unitfactors μA cm mol m Pa
+    @local_unitfactors mol m Pa
     henry_consts = py"henry_consts"
     # collect all species in a set
     species = Set{String}()
@@ -392,49 +491,66 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
         union!(species, first.(products))
     end
     species_list = Dict{String, AbstractSpecies}()
+    
     for s in species
         match_fictious  = match(re_fictious_gas,s)
         match_gas       = match(re_gas,         s)
         match_adsorbate = match(re_adsorbate,   s)
         match_site      = match(re_site,        s)
+        # Fictious species (e.g. OH_g)
         if !isnothing(match_fictious)
             species_name            = match_fictious[:species_name]
             (; pressure)            = findspecies(species_name, "g", species_defs)
             (; formation_energy)    = findspecies(species_name, energy_table)
             pressure                = species_defs[s]["pressure"] 
             species_list[s]         = FictiousSpecies(; species_name, formation_energy, pressure)
+        # Gas species (e.g. CO2_g)
         elseif !isnothing(match_gas)
             species_name                        = match_gas[:species_name]
             (; pressure)                        = findspecies(species_name, "g", species_defs)
             (; formation_energy, frequencies)   = findspecies(species_name, energy_table)
             henry_const                         = get(henry_consts, species_name, missing) * mol/(m^3 * Pa)
             species_list[s]                     = GasSpecies(; species_name, formation_energy, pressure, frequencies, henry_const)
+        # Adsorbed species (e.g. CO_t)
         elseif !isnothing(match_adsorbate)
             species_name                        = match_adsorbate[:species_name]
             site                                = match_adsorbate[:site]
             species_def                         = findspecies(species_name, site, species_defs)
             optional_params                     = []
             if electrochemical_thermo_mode == :hbond_surface_charge_density
-                if !haskey(species_def, :sigma_params)
-                    throw(ArgumentError("To use the electrochemical_thermo_mode=hbond_surface_charge_density sigma_params need to be specified for the adsorbate $species_name"))
-                else
-                    (; sigma_params) = species_def
-                    push!(optional_params, :sigma_params => (; a = sigma_params[2] / (μA/cm^2), b = sigma_params[1] / (μA/cm^2)^2))
-                end
+                _push_sigma_params!(optional_params, species_def)
+            end
+            if haskey(species_def, :self_interaction_parameter)
+                (; self_interaction_parameter) = species_def
+                push!(optional_params, :self_interaction_param => self_interaction_parameter[1])
+            end
+            if haskey(species_def, :cross_interaction_parameters)
+                (; cross_interaction_parameters) = species_def
+                cross_interaction_params = _parse_cross_interaction_params(s, cross_interaction_parameters, species_list)
+                push!(optional_params, :cross_interaction_params => cross_interaction_params)
             end
             coverage                            = 0.0
             (; site_names)                      = findspecies("", site, species_defs)
             site_name                           = site_names[1]
             (; formation_energy, frequencies)   = findspecies(species_name, energy_table; surface_name, site_name)
             species_list[s]                     = AdsorbateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, optional_params...)
+        # Electrode site (e.g. t)
         elseif !isnothing(match_site)
             site            = match_site[:site]
-            (; site_names)  = findspecies("", site, species_defs)
-            species_list[s]  = SiteSpecies(0.0, site_names[1])
+            species_def     = findspecies("", site, species_defs)
+            (; site_names)  = species_def
+            optional_params = []
+            if haskey(species_def, :interaction_response_parameters)
+                (; interaction_response_parameters) = species_def
+                interaction_response_parameters     = [Symbol(k) => v for (k, v) in interaction_response_parameters]
+                push!(optional_params, :interaction_response_params => InteractionResponseParams(; interaction_response_parameters...))
+            end
+            species_list[s]  = SiteSpecies(; formation_energy=0.0, site_name=site_names[1], optional_params...)
         else
             throw(ArgumentError("species $s is not a valid ficitious gas, gas, adsorbate, or site"))
         end
     end
+    # Transition States (e.g. COOH-H2O-ele_t)
     for (; educts, products, tstate) in reactions
         if isnothing(tstate)
             continue
@@ -452,18 +568,18 @@ function specieslist(reactions::Vector{ParsedReaction}, species_defs, energy_tab
                     species_def                         = findspecies(species_name, site, species_defs)
                     optional_params                     = []
                     if electrochemical_thermo_mode == :hbond_surface_charge_density
-                        if !haskey(species_def, :sigma_params)
-                            throw(ArgumentError("To use the electrochemical_thermo_mode=hbond_surface_charge_density sigma_params need to be specified for the adsorbate $species_name"))
-                        else
-                            (; sigma_params) = species_def
-                            push!(optional_params, :sigma_params => (; a = sigma_params[2] / (μA/cm^2), b = sigma_params[1] / (μA/cm^2)^2))
-                        end
+                        _push_sigma_params!(optional_params, species_def)
+                    end
+                    if haskey(species_def, :cross_interaction_parameters)
+                        (; cross_interaction_parameters) = species_def
+                        cross_interaction_params = _parse_cross_interaction_params(component, cross_interaction_parameters, species_list)
+                        push!(optional_params, :cross_interaction_params => cross_interaction_params)
                     end
                     coverage                            = 0.0
                     (; site_names)                      = findspecies("", site, species_defs)
                     site_name                           = site_names[1]
                     (; formation_energy, frequencies)   = findspecies(species_name, energy_table; surface_name, site_name)
-                    species_list[component]         = TStateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, β=tstate.beta, between_species=[first.(educts); first.(products)], optional_params...)
+                    species_list[component]             = TStateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, β=tstate.beta, between_species=[first.(educts) .=> -last.(educts); products], optional_params...)
                 else
                     throw(ArgumentError("$(component) is not a valid transition state"))
                 end

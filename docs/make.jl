@@ -6,16 +6,16 @@ using PlutoStaticHTML
 using Pkg
 
 const NOTEBOOK_DIR  = joinpath(@__DIR__, "..", "notebooks") 
-const NOTEBOOKS     = ["CO2R"]
+const NOTEBOOKS     = []#["CO2R"]
 const NOTEBOOKS_JL  = NOTEBOOKS .* ".jl"
 const NOTEBOOKS_MD  = NOTEBOOKS .* ".md"
 
 function build_all_notebooks()
-    thisdir=pwd()
+    thisproj=Pkg.project()
     Pkg.activate(NOTEBOOK_DIR)
     Pkg.develop(PackageSpec(path=pwd()))
     Pkg.instantiate()
-    Pkg.activate(thisdir)
+    Pkg.activate(thisproj.path)
     println("Building notebooks in $NOTEBOOK_DIR")
     ENV["PLUTO_PROJECT"]=NOTEBOOK_DIR
     oopts = OutputOptions(; append_build_context=true)
@@ -43,7 +43,18 @@ function mkdocs()
     makedocs(
         sitename    = "CatmapInterface.jl",
         modules     = [CatmapInterface],
-        format      = Documenter.HTML(mathengine=MathJax3()),
+        format      = Documenter.HTML(
+            size_threshold  = nothing,
+            mathengine      = MathJax3(
+                Dict(
+                    :tex => Dict(
+                        "inlineMath" => [["\$","\$"], ["\\(","\\)"]],
+                        "tags" => "ams",
+                        "packages" => ["base", "ams", "autoload", "mhchem"],
+                    )
+                )
+            )
+        ),
         clean       = false,
         doctest     = true,
         draft       = false,
@@ -62,5 +73,5 @@ end
 mkdocs()
 
 if !isinteractive()
-    deploydocs(repo = "github.com/smaasz/CatmapInterface.jl")
+    deploydocs(repo = "github.com/smaasz/CatmapInterface.jl", devbranch = "main")
 end

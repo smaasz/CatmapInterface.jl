@@ -56,6 +56,7 @@ struct GasSpecies <: AbstractSpecies
     """
     frequencies::Vector{Float64}
     """
+    Henry constant used to convert between gas and liquid phase
     """
     henry_const::Union{Float64, Missing}
     function GasSpecies(; species_name, formation_energy, pressure, frequencies, henry_const)
@@ -106,14 +107,22 @@ struct AdsorbateSpecies <: AbstractSpecies
     Parameters specifying the electrochemcial correction to the formation energy due to surface charges: ``G_f(U=0, σ) ≈ G_f(U=0,σ=0)+a\\cdot σ + b\\cdot σ^2``
     """
     sigma_params::@NamedTuple{a::Union{Nothing, Float64}, b::Union{Nothing, Float64}}
-    function AdsorbateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params=(;a=nothing, b=nothing))
+    """
+    Parameter used in [`CatmapInterface.first_order_adsorbate_interaction`](@ref) to specify the formation energy's dependence on the coverage
+    """
+    self_interaction_param::Float64
+    """
+    Parameter used in [`CatmapInterface.first_order_adsorbate_interaction`](@ref) to specify the formation energy's dependence on the coverage of other adsorbates
+    """
+    cross_interaction_params::Dict{String, Float64}
+    function AdsorbateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params=(;a=nothing, b=nothing), self_interaction_param=0.0, cross_interaction_params=Dict{String, Float64}())
         if coverage < 0.0 || coverage > 1.0
             throw(DomainError("coverage must be between 0 and 1"))
         end
         if any(frequencies .<= 0.0)
             throw(DomainError("all frequencies must be positive"))
         end
-        new(species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params)
+        new(species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params, self_interaction_param, cross_interaction_params)
     end
 end
 
@@ -148,35 +157,45 @@ struct TStateSpecies <: AbstractSpecies
     """
     frequencies::Vector{Float64}
     """
-    Parameters specifying the electrochemcial correction to the formation energy due to surface charges: ``G_f(U=0, σ) ≈ G_f(U=0,σ=0)+a\\cdot σ + b\\cdot σ^2``
-    """
-    sigma_params::@NamedTuple{a::Union{Nothing, Float64}, b::Union{Nothing, Float64}}
-    """
     Transfer coefficient of the reaction passing through the specified transition state
     """
     β::Float64
     """
-    Specifying the list of (stable) species the transition state is between
+    Specifying the list of (stable) species (with stoichiometric factor) the transition state is between
     """
-    between_species::Vector{String}
-    function TStateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params=(;a=nothing, b=nothing), β, between_species)
+    between_species::Vector{Pair{String, Int}}
+    """
+    Parameters specifying the electrochemcial correction to the formation energy due to surface charges: ``G_f(U=0, σ) ≈ G_f(U=0,σ=0)+a\\cdot σ + b\\cdot σ^2``
+    """
+    sigma_params::@NamedTuple{a::Union{Nothing, Float64}, b::Union{Nothing, Float64}}
+    """
+    Parameter used in [`CatmapInterface.first_order_adsorbate_interaction`](@ref) to specify the formation energy's dependence on the coverage of other adsorbates
+    """
+    cross_interaction_params::Dict{String, Float64}
+    function TStateSpecies(; species_name, formation_energy, coverage, site, surface_name, frequencies, β, between_species, sigma_params=(;a=nothing, b=nothing), cross_interaction_params=Dict{String, Float64}())
         if coverage < 0.0 || coverage > 1.0
             throw(DomainError("coverage must be between 0 and 1"))
         end
         if any(frequencies .<= 0.0)
             throw(DomainError("all frequencies must be positive"))
         end
-        new(species_name, formation_energy, coverage, site, surface_name, frequencies, sigma_params, β, between_species)
+        new(species_name, formation_energy, coverage, site, surface_name, frequencies, β, between_species, sigma_params, cross_interaction_params)
     end
 end
 #TStateSpecies(; formation_energy, coverage, site, surface_name, frequencies, sigma_params::Vector{Float64}) = TStateSpecies(; formation_energy, coverage, site, surface_name, frequencies, sigma_params=(; a=sigma_params[1], b=sigma_params[2]))
+
+@kwdef struct InteractionResponseParams
+    slope::Float64      = 1.0
+    cutoff::Float64     = 0.25
+    smoothing::Float64  = 0.05
+end
 
 """
 $(TYPEDEF)
 
 $(TYPEDFIELDS)
 """
-struct SiteSpecies <: AbstractSpecies
+@kwdef struct SiteSpecies <: AbstractSpecies
     """
     Formation energy of the site in joule per mole
     """
@@ -185,4 +204,8 @@ struct SiteSpecies <: AbstractSpecies
     Name of the site
     """
     site_name::String
+    """
+    Parameters used to specify the exact form of the `interaction_response_function` in [`CatmapInterface.first_order_adsorbate_interaction`](@ref)
+    """
+    interaction_response_params::InteractionResponseParams = InteractionResponseParams()
 end

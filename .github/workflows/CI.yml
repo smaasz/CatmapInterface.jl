@@ -36,7 +36,7 @@ jobs:
       - name: Checkout CatMAP
         uses: actions/checkout@v2
         with:
-          repository: sringe/catmap-1
+          repository: smaasz/catmap-1
           path: catmap-1
       - name: Quick Check
         env:
