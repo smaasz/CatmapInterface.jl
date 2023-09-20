@@ -6,7 +6,7 @@ using PlutoStaticHTML
 using Pkg
 
 const NOTEBOOK_DIR  = joinpath(@__DIR__, "..", "notebooks") 
-const NOTEBOOKS     = []#["CO2R"]
+const NOTEBOOKS     = ["CO2R"]
 const NOTEBOOKS_JL  = NOTEBOOKS .* ".jl"
 const NOTEBOOKS_MD  = NOTEBOOKS .* ".md"
 
@@ -54,7 +54,7 @@ function mkdocs()
             "Guide"     => "guide.md",
             "Public"    => "public.md",
             "Internal"  => "internal.md",
-            #"Notebooks" => notebooks,
+            "Notebooks" => notebooks,
         ]
     )
 end
