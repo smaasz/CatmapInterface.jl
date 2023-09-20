@@ -27,16 +27,16 @@ end
 
 function mkdocs()
     # generate html for notebooks
-    notebook_md_dir  = joinpath(@__DIR__,"src","notebooks")
-    rm(notebook_md_dir,force=true,recursive=true)
-    mkdir(notebook_md_dir)
-    build_all_notebooks()
-    for nb in NOTEBOOKS_MD
-        mv(joinpath(NOTEBOOK_DIR,nb),joinpath(notebook_md_dir,nb))
-    end
-    notebooks=joinpath.("notebooks",NOTEBOOKS_MD)
+    # notebook_md_dir  = joinpath(@__DIR__,"src","notebooks")
+    # rm(notebook_md_dir,force=true,recursive=true)
+    # mkdir(notebook_md_dir)
+    # build_all_notebooks()
+    # for nb in NOTEBOOKS_MD
+    #     mv(joinpath(NOTEBOOK_DIR,nb),joinpath(notebook_md_dir,nb))
+    # end
+    # notebooks=joinpath.("notebooks",NOTEBOOKS_MD)
 
-    notebooks=[ nb*".jl"=> joinpath("notebooks",nb*".md") for nb in NOTEBOOKS ]
+    # notebooks=[ nb*".jl"=> joinpath("notebooks",nb*".md") for nb in NOTEBOOKS ]
 
     DocMeta.setdocmeta!(CatmapInterface, :DocTestSetup, :(using CatmapInterface, Catalyst); recursive=true)
 
@@ -54,7 +54,7 @@ function mkdocs()
             "Guide"     => "guide.md",
             "Public"    => "public.md",
             "Internal"  => "internal.md",
-            "Notebooks" => notebooks,
+            #"Notebooks" => notebooks,
         ]
     )
 end
