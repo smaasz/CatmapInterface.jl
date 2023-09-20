@@ -6,16 +6,16 @@ using PlutoStaticHTML
 using Pkg
 
 const NOTEBOOK_DIR  = joinpath(@__DIR__, "..", "notebooks") 
-const NOTEBOOKS     = ["CO2R"]
+const NOTEBOOKS     = []#["CO2R"]
 const NOTEBOOKS_JL  = NOTEBOOKS .* ".jl"
 const NOTEBOOKS_MD  = NOTEBOOKS .* ".md"
 
 function build_all_notebooks()
-    thisdir=pwd()
+    thisproj=Pkg.project()
     Pkg.activate(NOTEBOOK_DIR)
     Pkg.develop(PackageSpec(path=pwd()))
     Pkg.instantiate()
-    Pkg.activate(thisdir)
+    Pkg.activate(thisproj.path)
     println("Building notebooks in $NOTEBOOK_DIR")
     ENV["PLUTO_PROJECT"]=NOTEBOOK_DIR
     oopts = OutputOptions(; append_build_context=true)
@@ -54,7 +54,7 @@ function mkdocs()
             "Guide"     => "guide.md",
             "Public"    => "public.md",
             "Internal"  => "internal.md",
-            "Notebooks" => notebooks,
+            #"Notebooks" => notebooks,
         ]
     )
 end
@@ -62,5 +62,5 @@ end
 mkdocs()
 
 if !isinteractive()
-    deploydocs(repo = "github.com/smaasz/CatmapInterface.jl")
+    deploydocs(repo = "github.com/smaasz/CatmapInterface.jl", devbranch = "main")
 end
