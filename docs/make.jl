@@ -6,7 +6,7 @@ using PlutoStaticHTML
 using Pkg
 
 const NOTEBOOK_DIR  = joinpath(@__DIR__, "..", "notebooks") 
-const NOTEBOOKS     = ["CO2R"]
+const NOTEBOOKS     = []#["CO2R"]
 const NOTEBOOKS_JL  = NOTEBOOKS .* ".jl"
 const NOTEBOOKS_MD  = NOTEBOOKS .* ".md"
 
@@ -43,7 +43,18 @@ function mkdocs()
     makedocs(
         sitename    = "CatmapInterface.jl",
         modules     = [CatmapInterface],
-        format      = Documenter.HTML(mathengine=MathJax3()),
+        format      = Documenter.HTML(
+            size_threshold  = nothing,
+            mathengine      = MathJax3(
+                Dict(
+                    :tex => Dict(
+                        "inlineMath" => [["\$","\$"], ["\\(","\\)"]],
+                        "tags" => "ams",
+                        "packages" => ["base", "ams", "autoload", "mhchem"],
+                    )
+                )
+            )
+        ),
         clean       = false,
         doctest     = true,
         draft       = false,
